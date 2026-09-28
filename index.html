@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>操作マニュアル自動作成 管理画面</title>
+<meta name="description" content="現場で撮影した操作動画から、手順書を自動生成・注釈編集する管理画面のデモ">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="app.css?v=3">
+</head>
+<body>
+<div class="shell">
+  <aside class="side" id="side">
+    <div class="brand">
+      <svg viewBox="0 0 32 32" width="28" height="28" aria-hidden="true"><rect x="2" y="6" width="22" height="20" rx="3" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M24 13l6-4v14l-6-4z" fill="currentColor"/><path d="M7 12h12M7 17h9M7 22h6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+      <div><b>Manual Studio</b><small>動画→操作手順書</small></div>
+    </div>
+    <nav>
+      <a href="#/dashboard" data-nav="dashboard"><i>▦</i>ダッシュボード</a>
+      <a href="#/upload" data-nav="upload"><i>⤒</i>動画アップロード</a>
+      <a href="#/manuals" data-nav="manuals"><i>☰</i>マニュアル一覧</a>
+      <a href="#/settings" data-nav="settings"><i>⚙</i>生成設定</a>
+    </nav>
+    <div class="side-foot">デモ環境<br><span>データはこのブラウザ内にのみ保存されます</span></div>
+  </aside>
+  <div class="main">
+    <header class="top">
+      <button class="icon-btn only-mobile" id="menuBtn" aria-label="メニュー">☰</button>
+      <div class="crumbs" id="crumbs"></div>
+      <div class="top-right">
+        <span class="save-state" id="saveState"></span>
+        <span class="user">製造技術課 管理者</span>
+      </div>
+    </header>
+    <main id="view"></main>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+<video id="grabber" muted playsinline preload="auto" crossorigin="anonymous" style="display:none"></video>
+<input type="file" id="imgInput" accept="image/*" hidden>
+<script src="app.js?v=3"></script>
+</body>
+</html>
