@@ -206,9 +206,9 @@ function viewDashboard() {
     </div>
     <div class="grid2">
       <div class="card"><div class="pad" style="padding-bottom:4px"><h2>最近更新したマニュアル</h2></div>
-        <table class="t"><thead><tr><th></th><th>タイトル</th><th class="hide-sm">設備 / ライン</th><th>手順</th><th>ステータス</th></tr></thead><tbody>
+        <div class="tscroll"><table class="t"><thead><tr><th></th><th>タイトル</th><th class="hide-sm">設備 / ライン</th><th>手順</th><th>ステータス</th></tr></thead><tbody>
         ${recent.map(p => `<tr class="click" data-open="${p.id}"><td style="width:84px"><span class="thumb" data-thumb="${p.id}"></span></td><td><b>${esc(p.title)}</b><div class="muted mono" style="font-size:11px">${esc(p.docNo)} ・ v${esc(p.version)}</div></td><td class="hide-sm">${esc(p.equipment)}<div class="muted" style="font-size:12px">${esc(p.line)}</div></td><td class="mono">${p.steps.length}</td><td>${statusBadge(p.status)}</td></tr>`).join('')}
-        </tbody></table></div>
+        </tbody></table></div></div>
       <div style="display:flex;flex-direction:column;gap:14px">
         <div class="card pad"><h2>工程別のマニュアル数</h2>
           ${Object.entries(byProc).map(([k, v]) => `<div style="display:grid;grid-template-columns:78px 1fr 24px;gap:8px;align-items:center;font-size:12px;margin:6px 0"><span>${esc(k)}</span><div class="bar" style="margin:0;height:10px"><i style="width:${v / max * 100}%"></i></div><span class="mono">${v}</span></div>`).join('')}
