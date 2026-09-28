@@ -1,26 +1,26 @@
 :root{
-  --bg:#f3f4f1; --panel:#ffffff; --panel-2:#f8f8f5; --line:#dfe1da; --line-2:#c9ccc2;
-  --ink:#1d2320; --ink-2:#4b534e; --ink-3:#7c847e;
-  --side:#1f2a2e; --side-ink:#c9d3d0; --side-hi:#ffffff;
-  --accent:#e8740c; --accent-ink:#ffffff; --accent-soft:#fdebd9;
+  --bg:#f3f6fb; --panel:#ffffff; --panel-2:#f5f8fd; --line:#dde5f0; --line-2:#c3cfe0;
+  --ink:#16233a; --ink-2:#44536b; --ink-3:#74839a;
+  --side:#0d3b85; --side-ink:#c5d6f2; --side-hi:#ffffff;
+  --accent:#1f6feb; --accent-ink:#ffffff; --accent-soft:#e3eefe;
   --blue:#2463b5; --green:#1f8a4c; --yellow:#c99100; --red:#c8321f;
   --st-draft:#6b7280; --st-review:#c99100; --st-approved:#2463b5; --st-published:#1f8a4c;
-  --stage:#101415; --mono:"JetBrains Mono",ui-monospace,monospace;
+  --stage:#0e1a2e; --mono:"JetBrains Mono",ui-monospace,monospace;
   --shadow:0 1px 2px rgba(0,0,0,.05),0 4px 14px rgba(0,0,0,.05);
   color-scheme:light;
 }
 @media (prefers-color-scheme:dark){
   :root:not([data-theme="light"]){
-    --bg:#141816; --panel:#1c211f; --panel-2:#222826; --line:#2f3633; --line-2:#3d4541;
-    --ink:#e8ebe8; --ink-2:#b7beb9; --ink-3:#88908b;
-    --side:#0f1312; --side-ink:#a9b4b0; --accent-soft:#3a2615;
+    --bg:#0f1624; --panel:#162033; --panel-2:#1b273d; --line:#26344d; --line-2:#34455f;
+    --ink:#e6edf8; --ink-2:#b3c0d4; --ink-3:#8292aa;
+    --side:#0a1f45; --side-ink:#a9bde0; --accent:#4c8dff; --accent-soft:#1a2f55;
     --shadow:0 1px 2px rgba(0,0,0,.3); color-scheme:dark;
   }
 }
 :root[data-theme="dark"]{
-  --bg:#141816; --panel:#1c211f; --panel-2:#222826; --line:#2f3633; --line-2:#3d4541;
-  --ink:#e8ebe8; --ink-2:#b7beb9; --ink-3:#88908b;
-  --side:#0f1312; --side-ink:#a9b4b0; --accent-soft:#3a2615;
+  --bg:#0f1624; --panel:#162033; --panel-2:#1b273d; --line:#26344d; --line-2:#34455f;
+  --ink:#e6edf8; --ink-2:#b3c0d4; --ink-3:#8292aa;
+  --side:#0a1f45; --side-ink:#a9bde0; --accent:#4c8dff; --accent-soft:#1a2f55;
   --shadow:0 1px 2px rgba(0,0,0,.3); color-scheme:dark;
 }
 *{box-sizing:border-box}
@@ -31,14 +31,14 @@ a{color:var(--blue)}
 .shell{display:flex;min-height:100vh}
 .side{width:220px;flex:none;background:var(--side);color:var(--side-ink);display:flex;flex-direction:column;position:sticky;top:0;height:100vh}
 .brand{display:flex;gap:10px;align-items:center;padding:18px 16px;color:var(--side-hi)}
-.brand svg{color:var(--accent)}
+.brand svg{color:#7fb2ff}
 .brand b{display:block;font-size:15px;letter-spacing:.02em}
 .brand small{display:block;font-size:11px;color:var(--side-ink)}
 .side nav{display:flex;flex-direction:column;padding:6px 8px;gap:2px}
 .side nav a{display:flex;gap:10px;align-items:center;padding:9px 10px;border-radius:6px;color:var(--side-ink);text-decoration:none}
 .side nav a i{font-style:normal;width:18px;text-align:center;opacity:.8}
-.side nav a:hover{background:rgba(255,255,255,.06);color:var(--side-hi)}
-.side nav a.on{background:rgba(232,116,12,.16);color:var(--side-hi);box-shadow:inset 3px 0 0 var(--accent)}
+.side nav a:hover{background:rgba(255,255,255,.08);color:var(--side-hi)}
+.side nav a.on{background:rgba(255,255,255,.14);color:var(--side-hi);box-shadow:inset 3px 0 0 #7fb2ff}
 .side-foot{margin-top:auto;padding:14px 16px;font-size:11px;border-top:1px solid rgba(255,255,255,.08)}
 .side-foot span{opacity:.7}
 .main{flex:1;min-width:0;display:flex;flex-direction:column}

@@ -13,7 +13,7 @@ const fmtS = t => { t = Math.round(t || 0); return `${Math.floor(t / 60)}:${Stri
 const today = () => new Date().toISOString().slice(0, 10);
 function toast(msg) { const el = $('#toast'); el.textContent = msg; el.classList.add('on'); clearTimeout(toast.t); toast.t = setTimeout(() => el.classList.remove('on'), 2600); }
 const VW = 1000;
-const COLORS = ['#e8740c', '#d6341f', '#f2c200', '#1f9a52', '#2463b5', '#ffffff', '#1a1a1a'];
+const COLORS = ['#2463b5', '#d6341f', '#e8740c', '#f2c200', '#1f9a52', '#ffffff', '#1a1a1a'];
 const STATUS = { draft: '下書き', review: 'レビュー中', approved: '承認済み', published: '公開中', processing: '解析中' };
 const FLOW = ['draft', 'review', 'approved', 'published'];
 const LV = { none: 'なし', caution: '注意', warning: '警告', danger: '危険' };
@@ -66,7 +66,7 @@ const SAMPLE_STEPS = [
   { t: 21, ft: 23.8, title: '起動ボタンを押す', desc: '起動ボタン（緑）を押します。\n起動ランプの点灯と、主軸の回転（S=1200）を確認します。', lv: 'warning', ct: '異音・振動などの異常があれば、直ちに非常停止ボタンを押します。' },
 ];
 function sampleOverlays() {
-  const O = (type, s, e, o) => ({ id: uid(), type, start: s, end: e, color: '#e8740c', sw: 5, fs: 26, ...o });
+  const O = (type, s, e, o) => ({ id: uid(), type, start: s, end: e, color: '#2463b5', sw: 5, fs: 26, ...o });
   return [
     O('blur', 0, 26, { x: 0, y: 0, w: 330, h: 36, label: 'カメラ情報をマスク' }),
     O('image', 0.3, 3.9, { x: 40, y: 405, w: 210, h: 118, img: 'ppe' }),
@@ -167,7 +167,7 @@ function crumbs(html) { $('#crumbs').innerHTML = html; }
 /* ---------- サムネイル ---------- */
 const thumbCache = {};
 function placeholderThumb(p, i = 0) {
-  const hue = [28, 205, 150, 265, 0][(p.title.length + i) % 5];
+  const hue = [214, 205, 222, 198, 230][(p.title.length + i) % 5];
   return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 90"><defs><linearGradient id="g" x2="1" y2="1"><stop offset="0" stop-color="hsl(${hue} 25% 30%)"/><stop offset="1" stop-color="hsl(${hue} 30% 18%)"/></linearGradient></defs><rect width="160" height="90" fill="url(#g)"/><rect x="20" y="22" width="70" height="48" rx="4" fill="none" stroke="rgba(255,255,255,.35)" stroke-width="3"/><rect x="100" y="22" width="40" height="48" rx="4" fill="rgba(255,255,255,.18)"/><circle cx="112" cy="36" r="5" fill="rgba(255,255,255,.5)"/><circle cx="128" cy="36" r="5" fill="rgba(255,255,255,.3)"/>${i ? `<text x="150" y="82" font-size="14" fill="rgba(255,255,255,.7)" text-anchor="end" font-family="monospace">${i}</text>` : ''}</svg>`);
 }
 async function projectThumb(p) {
@@ -459,7 +459,7 @@ function drawDiffGraph(cv, diffs, th, dur) {
   const g = cv.getContext('2d'); const max = Math.max(th * 1.3, ...diffs.map(x => x.d));
   g.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--ink-3'); g.lineWidth = devicePixelRatio;
   g.beginPath(); diffs.forEach((x, i) => { const px = x.t / dur * w, py = h - x.d / max * h; i ? g.lineTo(px, py) : g.moveTo(px, py); }); g.stroke();
-  g.strokeStyle = '#e8740c'; g.setLineDash([4 * devicePixelRatio, 3 * devicePixelRatio]); g.beginPath(); g.moveTo(0, h - th / max * h); g.lineTo(w, h - th / max * h); g.stroke();
+  g.strokeStyle = '#1f6feb'; g.setLineDash([4 * devicePixelRatio, 3 * devicePixelRatio]); g.beginPath(); g.moveTo(0, h - th / max * h); g.lineTo(w, h - th / max * h); g.stroke();
 }
 
 /* ---------- 注釈の描画（SVG / Canvas 共通の形状定義） ---------- */
@@ -559,7 +559,7 @@ async function viewEditor(id, tab) {
   if (!p) { $('#view').innerHTML = '<div class="empty">マニュアルが見つかりません。<a href="#/manuals">一覧へ戻る</a></div>'; return; }
   crumbs(`<a href="#/manuals" style="color:inherit">マニュアル一覧</a> ／ <b>${esc(p.title)}</b>`);
   const keepT = E && E.p === p ? E.t : (p.steps[0]?.ft ?? 0);
-  E = { p, tab, t: keepT, sel: E && E.p === p ? E.sel : null, tool: 'select', color: '#e8740c', undo: E && E.p === p ? E.undo : [] };
+  E = { p, tab, t: keepT, sel: E && E.p === p ? E.sel : null, tool: 'select', color: '#2463b5', undo: E && E.p === p ? E.undo : [] };
   const fi = FLOW.indexOf(p.status);
   $('#view').innerHTML = `
     <div class="ed-head">
@@ -1085,7 +1085,13 @@ function tabInfo(p) {
   try {
     const s = await DB.kvGet('settings'); if (s) SETTINGS = { ...SETTINGS, ...s };
     PROJECTS = await DB.all();
-    if (!PROJECTS.length && !(await DB.kvGet('seeded'))) { PROJECTS = seedProjects(); for (const p of PROJECTS) await DB.put(p); await DB.kvPut('seeded', true); }
+    if (!PROJECTS.length && !(await DB.kvGet('seeded'))) { PROJECTS = seedProjects(); for (const p of PROJECTS) await DB.put(p); await DB.kvPut('seeded', true); await DB.kvPut('seeded-v2', true); }
+    else if (!(await DB.kvGet('seeded-v2'))) {
+      // 配色変更（白×青）に合わせて、同梱サンプルだけ作り直す
+      const fresh = seedProjects()[0];
+      for (const old of PROJECTS.filter(p => p.videoKey === 'sample')) { await DB.del(old.id); }
+      PROJECTS = PROJECTS.filter(p => p.videoKey !== 'sample').concat(fresh); await DB.put(fresh); await DB.kvPut('seeded-v2', true);
+    }
   } catch (e) { console.warn('IndexedDB を使えないため、保存なしで動かします', e); PROJECTS = seedProjects(); DB.put = DB.del = DB.putBlob = DB.kvPut = async () => { }; }
   window.addEventListener('hashchange', route);
   route();
