@@ -1,11 +1,11 @@
 :root{
-  --bg:#f8fbfe; --panel:#ffffff; --panel-2:#f4f9fe; --line:#e6eef7; --line-2:#d2dfee;
+  --bg:#ffffff; --panel:#ffffff; --panel-2:#f7fbff; --line:#e6eef7; --line-2:#d2dfee;
   --ink:#1f3350; --ink-2:#4e627e; --ink-3:#8797ad;
   --side:#ffffff; --side-ink:#5d6f89; --side-hi:#1c5fb8; --side-line:#e6eef7;
   --accent:#3b93f0; --accent-ink:#ffffff; --accent-soft:#eaf4fe;
   --blue:#2463b5; --green:#1f8a4c; --yellow:#c99100; --red:#c8321f;
   --st-draft:#6b7280; --st-review:#c99100; --st-approved:#2463b5; --st-published:#1f8a4c;
-  --stage:#eef5fc; --mono:"JetBrains Mono",ui-monospace,monospace;
+  --stage:#f5f9fe; --mono:"JetBrains Mono",ui-monospace,monospace;
   --shadow:0 1px 2px rgba(40,90,160,.04),0 6px 18px rgba(40,90,160,.05);
   color-scheme:light;
 }
@@ -77,7 +77,7 @@ table.t{width:100%;border-collapse:collapse;font-size:13px}
 .t tr:last-child td{border-bottom:0}
 .t tr.click{cursor:pointer}
 .t tr.click:hover td{background:var(--panel-2)}
-.thumb{width:72px;aspect-ratio:16/9;border-radius:4px;background:#e8f1fb center/cover;display:block}
+.thumb{width:72px;aspect-ratio:16/9;border-radius:4px;background:#f0f6fd center/cover;display:block}
 .badge{display:inline-flex;align-items:center;gap:5px;font-size:12px;padding:2px 9px;border-radius:99px;border:1px solid currentColor;white-space:nowrap}
 .badge::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
 .st-draft{color:var(--st-draft)} .st-review{color:var(--st-review)} .st-approved{color:var(--st-approved)} .st-published{color:var(--st-published)}
@@ -187,7 +187,7 @@ kbd{font-family:var(--mono);font-size:11px;border:1px solid var(--line-2);border
 .steps{display:flex;flex-direction:column;gap:12px}
 .step{display:grid;grid-template-columns:40px 300px minmax(0,1fr);gap:14px;padding:14px}
 .step .no{width:34px;height:34px;border-radius:50%;background:var(--accent-soft);color:var(--side-hi);border:1px solid var(--accent);display:grid;place-items:center;font-weight:700;font-family:var(--mono)}
-.step .img{position:relative;border-radius:6px;overflow:hidden;background:#e8f1fb center/cover;aspect-ratio:16/9}
+.step .img{position:relative;border-radius:6px;overflow:hidden;background:#f0f6fd center/cover;aspect-ratio:16/9}
 .step .img img{width:100%;display:block}
 .step .img .t{position:absolute;left:6px;bottom:6px;background:rgba(0,0,0,.7);color:#fff;font:11px var(--mono);padding:1px 6px;border-radius:3px}
 .step .acts{display:flex;gap:4px;flex-wrap:wrap;margin-top:8px}
