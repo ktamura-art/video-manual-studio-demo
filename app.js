@@ -105,7 +105,7 @@ function seedProjects() {
   const d = (n) => { const x = new Date(); x.setDate(x.getDate() - n); return x.toISOString().slice(0, 10); };
   const sample = baseProject({
     title: 'MC-200 横形加工機 起動手順', equipment: 'MC-200 横形加工機', process: '機械加工', line: '第2工場 ライン3', docNo: 'OP-M-0142', version: '1.2',
-    status: 'review', createdAt: d(2), videoKey: 'sample', videoName: 'mc200_startup.mp4', duration: 26, steps: mkSteps(SAMPLE_STEPS), overlays: sampleOverlays(), images: { ppe: PPE_SVG },
+    status: 'review', createdAt: d(2), videoKey: 'sample', videoName: 'mc200_startup.mp4', duration: 26, steps: mkSteps(SAMPLE_STEPS), overlays: sampleOverlays(), images: { ppe: PPE_SVG }, ...sampleExtras(),
     history: [{ at: d(2), who: '製造技術課', what: '動画から自動生成（6手順）' }, { at: d(1), who: '製造技術課', what: '注釈23件を追加・レビュー依頼' }],
   });
   const dummy = (title, equipment, process, line, status, days, no, steps) => baseProject({ title, equipment, process, line, status, createdAt: d(days), docNo: no, videoName: '', duration: steps.length * 5, steps: mkSteps(steps.map((s, i) => ({ t: i * 5, ...s }))), history: [{ at: d(days), who: '製造技術課', what: '動画から自動生成' }] });
@@ -160,6 +160,7 @@ async function route() {
   $('#side').classList.remove('open');
   window.scrollTo(0, 0);
   if (view === 'edit') return viewEditor(id, tab || 'annot');
+  if (view === 'templates') return viewTemplates(id);
   ({ dashboard: viewDashboard, upload: viewUpload, manuals: viewManuals, settings: viewSettings }[view] || viewDashboard)();
 }
 function crumbs(html) { $('#crumbs').innerHTML = html; }
@@ -439,7 +440,7 @@ function viewUpload() {
     const p = baseProject({
       title: $('#u-title').value.trim() || file.name.replace(/\.[^.]+$/, ''), equipment: $('#u-eq').value.trim(), process: $('#u-proc').value.trim(), line: $('#u-line').value.trim(),
       docNo: $('#u-no').value.trim(), target: $('#u-target').value, videoKey: key, videoName: file.name, duration: dur, width: W, height: H, vh: VW * H / W,
-      steps, overlays: useScript ? sampleOverlays() : [], images: useScript ? { ppe: PPE_SVG } : {},
+      steps, overlays: useScript ? sampleOverlays() : [], images: useScript ? { ppe: PPE_SVG } : {}, ...(useScript ? sampleExtras() : {}),
       history: [{ at: today(), who: '製造技術課', what: `動画から自動生成（${steps.length}手順）` }],
     });
     await DB.put(p); PROJECTS.push(p);
@@ -983,38 +984,140 @@ function tabSteps(p) {
   draw();
 }
 
+/* ===== 出力フォーマット（テンプレート） ===== */
+const LBL = {
+  ja: { title: 'タイトル', docNo: '文書番号', process: '工程', equipment: '設備・型式', line: 'ライン・場所', target: '対象者', version: '版', date: '発行日', page: '頁', author: '作成部署',
+    info: '基本情報', ppe: '必要な保護具', spec: '仕様', steps: '作業手順', notes: '注意事項', tools: '工具・治具', materials: '使用材料', forms: '関連帳票', freq: '記入頻度', rev: '改訂履歴', revNo: '版', revDesc: '改訂内容', revDate: '日付', stepCnt: '手順数' },
+  zh: { title: '描述', docNo: '工序号', process: '工序', equipment: '型号', line: '线别', target: '作业者', version: '版次', date: '发行日', page: '页', author: '部门',
+    info: '基本信息', ppe: '防护用品', spec: '仕样', steps: '步骤', notes: '注意事项', tools: '工具仪器', materials: '使用材料', forms: '相关表单', freq: '检查频率', rev: '修订履历', revNo: '版次', revDesc: '修订内容', revDate: '日期', stepCnt: '步骤数' },
+  en: { title: 'Description', docNo: 'WI No.', process: 'Process', equipment: 'Model', line: 'Line', target: 'Operator', version: 'Rev.', date: 'Issued', page: 'Page', author: 'Dept.',
+    info: 'Overview', ppe: 'PPE', spec: 'Specification', steps: 'Steps', notes: 'Notes', tools: 'Tools', materials: 'Materials', forms: 'Related forms', freq: 'Frequency', rev: 'Revision', revNo: 'Rev.', revDesc: 'Description', revDate: 'Date', stepCnt: 'Steps' },
+};
+const LANGS = { ja: '日本語', 'ja-en': '日本語＋英語', 'ja-zh': '日本語＋中国語', 'en-ja': '英語＋日本語', 'zh-ja': '中国語＋日本語' };
+const lbl = (T, k) => { const [a, b] = T.lang.split('-'); return b ? `${LBL[a][k]}<small>${LBL[b][k]}</small>` : LBL[a][k]; };
+const HEADER_KEYS = ['docNo', 'process', 'equipment', 'title', 'line', 'target', 'version', 'date', 'page', 'author'];
+const SECTION_NAMES = { info: '基本情報（設備・工程・対象者）', ppe: '必要な保護具', spec: '仕様表', steps: '作業手順', notes: '注意事項のまとめ', resources: '工具・材料・関連帳票', rev: '改訂履歴', sign: '承認欄' };
+const DOC_COLORS = ['#1a1a1a', '#1f3fae', '#1c5fb8', '#0f7a5c', '#b3261e'];
+const BUILTIN_TEMPLATES = [
+  { id: 'std', builtin: true, name: '標準（A4縦・1手順1行）', heading: '作業標準書（操作手順）', orient: 'portrait', cols: 1, flow: 'z', arrows: false, imgPos: 'left', imgSize: 'l', notesPos: 'inline',
+    header: ['docNo', 'version', 'date'], sections: [['info', 1], ['ppe', 1], ['spec', 0], ['steps', 1], ['notes', 0], ['resources', 0], ['rev', 0], ['sign', 1]], footerRow: false, sign: '作成,確認,承認', signReverse: true, lang: 'ja', color: '#1a1a1a', fs: 'm', showTime: true },
+  { id: 'wi', builtin: true, name: '作業指導書（A4横・フロー型）', heading: '作業指導書　WORK INSTRUCTION', orient: 'landscape', cols: 5, flow: 'snake', arrows: true, imgPos: 'below', imgSize: 'l', notesPos: 'side',
+    header: ['docNo', 'process', 'equipment', 'title', 'version', 'page'], sections: [['spec', 1], ['steps', 1], ['notes', 1], ['resources', 1], ['rev', 1], ['sign', 1], ['info', 0], ['ppe', 0]], footerRow: true, sign: '作成,確認,承認', signReverse: false, lang: 'ja-zh', color: '#1f3fae', fs: 's', showTime: false },
+  { id: 'card', builtin: true, name: '現場掲示用（A4横・写真大きめ3列）', heading: '操作手順', orient: 'landscape', cols: 3, flow: 'z', arrows: true, imgPos: 'above', imgSize: 'l', notesPos: 'inline',
+    header: ['equipment', 'line', 'version'], sections: [['ppe', 1], ['steps', 1], ['info', 0], ['spec', 0], ['notes', 0], ['resources', 0], ['rev', 0], ['sign', 0]], footerRow: false, sign: '作成,確認,承認', signReverse: true, lang: 'ja', color: '#1c5fb8', fs: 'l', showTime: false },
+];
+let CUSTOM_TEMPLATES = [];
+const allTemplates = () => [...BUILTIN_TEMPLATES, ...CUSTOM_TEMPLATES];
+const getT = id => allTemplates().find(t => t.id === id) || BUILTIN_TEMPLATES[0];
+let tplSaveTimer;
+function saveTemplates() { clearTimeout(tplSaveTimer); tplSaveTimer = setTimeout(() => DB.kvPut('templates', CUSTOM_TEMPLATES).then(() => { $('#saveState').textContent = '保存済み ' + new Date().toLocaleTimeString('ja-JP'); }), 300); }
+
+/* 手順写真のキャッシュ（プレビューを何度も組み直すため） */
+const stepImgCache = {};
+function stepImages(p, withAnn) {
+  const k = `${p.id}|${p.updatedAt}|${withAnn}`;
+  if (!stepImgCache[k]) stepImgCache[k] = (async () => { const out = []; for (const [i, s] of p.steps.entries()) out.push(p.videoKey ? await renderFrame(p, s.ft + 0.01, 640, withAnn) : placeholderThumb(p, i + 1)); return out; })();
+  return stepImgCache[k];
+}
+
+function renderDoc(el, p, imgs, T) {
+  el.className = `doc ${T.orient === 'landscape' ? 'land' : ''} fs-${T.fs}`;
+  el.style.setProperty('--dc', T.color);
+  el.dataset.orient = T.orient;
+  el.innerHTML = docHTML(p, imgs, T);
+}
+function docHTML(p, imgs, T) {
+  const L = k => lbl(T, k);
+  const val = { docNo: p.docNo || '—', process: p.process || '—', equipment: p.equipment || '—', line: p.line || '—', target: p.target || '—', version: p.version, date: p.revisions.at(-1)?.[2] || p.createdAt, page: '1 / 1', title: p.title, author: p.author };
+  const lvName = { caution: '注意', warning: '警告', danger: '危険' };
+  const ct = s => s.lv !== 'none' && s.ct ? `<div class="ct ${s.lv}"><b>${lvName[s.lv]}</b>${esc(s.ct)}</div>` : '';
+  const on = T.sections.filter(x => x[1]).map(x => x[0]);
+  const side = T.notesPos === 'side' && on.includes('notes');
+  const top = T.header.includes('title')
+    ? `<div class="dt-top"><h1>${esc(T.heading)}</h1></div>`
+    : `<div class="dt-top left"><div class="dt-kicker">${esc(T.heading)}</div><h1>${esc(p.title)}</h1></div>`;
+  const htable = T.header.length ? `<table class="dt-t dt-h"><tr>${T.header.map(k => `<th>${L(k)}</th>`).join('')}</tr><tr>${T.header.map(k => `<td>${esc(val[k])}</td>`).join('')}</tr></table>` : '';
+  const steps = () => {
+    const n = p.steps.length, C = Math.max(1, Math.min(+T.cols || 1, n || 1));
+    const pos = i => { const r = Math.floor(i / C); let c = i % C; if (T.flow === 'snake' && r % 2) c = C - 1 - c; return [r, c]; };
+    const iw = { s: 32, m: 42, l: 52 }[T.imgSize], iw2 = { s: 70, m: 85, l: 100 }[T.imgSize];
+    const cells = p.steps.map((s, i) => {
+      const [r, c] = pos(i); let ar = '';
+      if (T.arrows && i < n - 1) { const [r2, c2] = pos(i + 1); if (!(r2 > r && c2 !== c)) ar = `<span class="ar ar-${r2 > r ? 'd' : c2 > c ? 'r' : 'l'}"></span>`; }
+      const img = `<img src="${imgs[i]}" alt="手順${i + 1}">`;
+      const txt = `<div class="ctx"><div class="chd"><b>${i + 1}</b><span>${esc(s.title)}</span></div><p>${esc(s.desc)}</p>${T.notesPos !== 'side' ? ct(s) : ''}${T.showTime ? `<div class="tm">動画 ${fmt(s.t)}〜</div>` : ''}</div>`;
+      return `<div class="cell img-${T.imgPos}" style="grid-row:${r + 1};grid-column:${c + 1};--iw:${iw}%;--iw2:${iw2}%">${T.imgPos === 'below' ? txt + img : img + txt}${ar}</div>`;
+    }).join('');
+    return `<h4 class="dt-sh">${L('steps')}</h4><div class="dt-grid ${T.imgPos === 'left' ? 'rows' : ''}" style="grid-template-columns:repeat(${C},minmax(0,1fr))">${cells}</div>`;
+  };
+  const notes = () => {
+    const gen = String(p.notes || '').split('\n').map(x => x.trim()).filter(Boolean);
+    const fromSteps = T.notesPos === 'inline' ? [] : p.steps.map((s, i) => [s, i]).filter(([s]) => s.lv !== 'none' && s.ct);
+    if (!gen.length && !fromSteps.length) return '';
+    return `<div class="dt-notes"><h4>${L('notes')}</h4><ol>${gen.map(g => `<li>${esc(g)}</li>`).join('')}${fromSteps.map(([s, i]) => `<li><b class="lv-${s.lv}">［${lvName[s.lv]}］</b>手順${i + 1}：${esc(s.ct)}</li>`).join('')}</ol></div>`;
+  };
+  const list = (k, arr) => `<table class="dt-t"><tr><th>${L(k)}</th></tr>${arr.length ? arr.map((x, i) => `<tr><td>${i + 1}. ${esc(x)}</td></tr>`).join('') : '<tr><td>—</td></tr>'}</table>`;
+  const signLabels = String(T.sign || '').split(/[,、]/).map(x => x.trim()).filter(Boolean);
+  const stampN = { draft: 1, review: 2, approved: 99, published: 99 }[p.status] || 0;
+  const signCells = signLabels.map((l, i) => ({ l, stamped: i < stampN }));
+  if (T.signReverse) signCells.reverse();
+  const sec = {
+    info: () => `<div class="info"><div><small>${L('equipment')}</small>${esc(val.equipment)}</div><div><small>${L('process')} / ${L('line')}</small>${esc(val.process)} ／ ${esc(val.line)}</div><div><small>${L('target')}</small>${esc(val.target)}</div><div><small>${L('stepCnt')}</small>${p.steps.length}</div></div>`,
+    ppe: () => p.ppe ? `<div class="ppe"><b>${L('ppe')}</b><span>${esc(p.ppe).split(/[,、]/).join('　・　')}</span></div>` : '',
+    spec: () => p.specs.length ? `<h4 class="dt-sh">${L('spec')}</h4><table class="dt-t dt-spec"><tr>${p.specs.map(r => `<th>${esc(r[0])}</th>`).join('')}</tr><tr>${p.specs.map(r => `<td>${esc(r[1])}</td>`).join('')}</tr></table>` : '',
+    steps: () => side ? `<div class="dt-with-side"><div>${steps()}</div><aside>${notes()}</aside></div>` : steps(),
+    notes: () => side ? '' : notes(),
+    resources: () => `<div class="dt-res">${list('tools', p.tools)}${list('materials', p.materials)}<table class="dt-t"><tr><th>${L('forms')}</th><th>${L('freq')}</th></tr>${p.forms.length ? p.forms.map(f => `<tr><td>${esc(f[0])}</td><td>${esc(f[1])}</td></tr>`).join('') : '<tr><td>—</td><td></td></tr>'}</table></div>`,
+    rev: () => `<table class="dt-t dt-rev"><tr><th>${L('revNo')}</th><th>${L('revDesc')}</th><th>${L('revDate')}</th></tr>${p.revisions.map(r => `<tr><td>${esc(r[0])}</td><td>${esc(r[1])}</td><td class="nw">${esc(r[2])}</td></tr>`).join('')}</table>`,
+    sign: () => signCells.length ? `<div class="dt-sign"><table class="dt-t"><tr>${signCells.map(c => `<th>${esc(c.l)}</th>`).join('')}</tr><tr>${signCells.map(c => `<td>${c.stamped ? `<span class="stampc">${esc(c.l)}</span>` : ''}</td>`).join('')}</tr></table></div>` : '',
+  };
+  const inl = k => T.footerRow && ['resources', 'rev', 'sign'].includes(k);
+  const body = on.map(k => { const h = sec[k](); return h ? `<section class="dt-sec ${inl(k) ? 'inl inl-' + k : ''}">${h}</section>` : ''; }).join('');
+  return `${top}${htable}<div class="dt-body">${body}</div><div class="foot"><span>${esc(p.author)} ／ ${STATUS[p.status]}</span><span>${esc(T.name)}</span></div>`;
+}
+function fitDoc(el) {
+  const wrap = el.parentElement; el.style.zoom = 1;
+  const s = Math.min(1, (wrap.clientWidth - 2) / el.offsetWidth); el.style.zoom = s < 1 ? s : '';
+}
+function pageCSS(T) { return `@page{size:A4 ${T.orient};margin:8mm}`; }
+function setPrintPage(T) { let st = $('#pageSize'); if (!st) { st = document.createElement('style'); st.id = 'pageSize'; document.head.appendChild(st); } st.textContent = pageCSS(T); }
+
 /* ===== ③ プレビュー・出力 ===== */
 async function tabPreview(p) {
   const body = $('#tabBody');
   body.innerHTML = `<div class="doc-wrap">
     <div class="doc-side card pad">
-      <h2>出力</h2>
+      <h2>出力フォーマット</h2>
+      <select class="in" id="tplSel">${allTemplates().map(t => `<option value="${t.id}" ${t.id === p.template ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select>
+      <a class="btn sm" style="margin-top:8px" href="#/templates/${esc(p.template)}">⚙ フォーマットを編集・新規作成</a>
+      <h2 style="margin-top:16px">出力</h2>
       <div style="display:flex;flex-direction:column;gap:8px">
         <button class="btn" id="xPrint">🖨 印刷する</button>
         <button class="btn" id="xHtml">⤓ 手順書をHTMLで保存</button>
         <button class="btn" id="xVideo" ${p.videoKey ? '' : 'disabled'}>🎬 注釈入り動画を書き出し</button>
       </div>
-      <p class="hint" style="margin-top:12px">手順の写真には、その時点で表示中の注釈を焼き込んでいます。写真の位置は「① 注釈」の「📷 手順写真にする」で変えられます。</p>
-      <h2 style="margin-top:14px">表示</h2>
-      <label class="row" style="font-size:13px;gap:6px"><input type="checkbox" id="optAnn" checked> 写真に注釈を入れる</label>
-      <label class="row" style="font-size:13px;gap:6px;margin-top:4px"><input type="checkbox" id="optStamp" checked> 承認欄を表示</label>
+      <label class="row" style="font-size:13px;gap:6px;margin-top:12px"><input type="checkbox" id="optAnn" checked> 写真に注釈を入れる</label>
+      <p class="hint" style="margin-top:10px">仕様表・工具・改訂履歴などの中身は「文書情報・履歴」タブで入力します。</p>
     </div>
-    <div class="grow" style="min-width:0"><div class="doc" id="doc"><div class="empty">手順書を組み立てています…</div></div></div>
+    <div class="grow doc-fit" style="min-width:0"><div class="doc" id="doc"><div class="empty">手順書を組み立てています…</div></div></div>
   </div>`;
   const build = async () => {
-    const withAnn = $('#optAnn').checked, stamp = $('#optStamp').checked;
-    const imgs = [];
-    for (const [i, s] of p.steps.entries()) imgs.push(p.videoKey ? await renderFrame(p, s.ft + 0.01, 760, withAnn) : placeholderThumb(p, i + 1));
-    $('#doc').innerHTML = docHTML(p, imgs, stamp);
+    const T = getT(p.template); setPrintPage(T);
+    const imgs = await stepImages(p, $('#optAnn').checked);
+    renderDoc($('#doc'), p, imgs, T); fitDoc($('#doc'));
   };
-  $('#optAnn').onchange = build; $('#optStamp').onchange = build;
-  $('#xPrint').onclick = () => window.print();
+  $('#tplSel').onchange = e => { p.template = e.target.value; touch(p); $('.doc-side a.btn').href = `#/templates/${p.template}`; build(); };
+  $('#optAnn').onchange = build;
+  $('#xPrint').onclick = () => { const d = $('#doc'); d.style.zoom = ''; window.print(); fitDoc(d); };
   $('#xHtml').onclick = () => {
-    const html = `<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(p.title)}</title><style>${docCSS()}</style></head><body><div class="doc">${$('#doc').innerHTML}</div></body></html>`;
+    const d = $('#doc').cloneNode(true); d.style.zoom = ''; d.removeAttribute('id');
+    const html = `<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(p.title)}</title><style>${docCSS()}${pageCSS(getT(p.template))}</style></head><body>${d.outerHTML}</body></html>`;
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([html], { type: 'text/html' })); a.download = `${p.docNo || 'manual'}_${p.title}.html`; a.click();
     toast('HTMLファイルを保存しました（画像込みの1ファイル）');
   };
   $('#xVideo').onclick = () => exportVideo(p);
+  const ro = new ResizeObserver(() => fitDoc($('#doc'))); ro.observe($('.doc-fit'));
+  cleanup = () => ro.disconnect();
   await build();
 }
 function docCSS() {
@@ -1023,16 +1126,107 @@ function docCSS() {
   try { css += [...sheet.cssRules].map(r => r.cssText).filter(t => t.startsWith('.doc')).join('\n'); } catch { }
   return css;
 }
-function docHTML(p, imgs, stamp) {
-  const lvIcon = { caution: '注意', warning: '警告', danger: '危険' };
-  return `
-    <div class="meta"><div><div style="font-size:11px;color:#555">作業標準書（操作手順）</div><h1>${esc(p.title)}</h1><div style="font-size:11px;margin-top:6px">文書番号 <b>${esc(p.docNo || '—')}</b>　版 <b>${esc(p.version)}</b>　発行日 ${esc(p.history.at(-1)?.at || p.createdAt)}</div></div>
-    ${stamp ? `<table class="m stamp"><tr><th>承認</th><th>確認</th><th>作成</th></tr><tr><td>${['approved', 'published'].includes(p.status) ? '<span style="color:#c8321f;border:2px solid #c8321f;border-radius:50%;padding:6px 4px;font-weight:700">承認</span>' : ''}</td><td>${p.status !== 'draft' ? '<span style="color:#c8321f;border:2px solid #c8321f;border-radius:50%;padding:6px 4px;font-weight:700">確認</span>' : ''}</td><td><span style="color:#c8321f;border:2px solid #c8321f;border-radius:50%;padding:6px 4px;font-weight:700">作成</span></td></tr></table>` : ''}</div>
-    <div class="info"><div><small>設備</small>${esc(p.equipment || '—')}</div><div><small>工程 / 場所</small>${esc(p.process || '—')} ／ ${esc(p.line || '—')}</div><div><small>対象者</small>${esc(p.target)}</div><div><small>手順数 / 動画</small>${p.steps.length} 手順 ／ ${p.videoKey ? fmtS(p.duration) : '—'}</div></div>
-    ${p.ppe ? `<div class="ppe"><b>必要な保護具</b><span>${esc(p.ppe).split(/[,、]/).join('　・　')}</span></div>` : ''}
-    ${p.steps.map((s, i) => `<div class="dstep"><img src="${imgs[i]}" alt="手順${i + 1}"><div><h3><span>${i + 1}</span>${esc(s.title)}</h3><p>${esc(s.desc)}</p>${s.lv !== 'none' && s.ct ? `<div class="ct ${s.lv}"><b>${lvIcon[s.lv]}</b>${esc(s.ct)}</div>` : ''}<div style="font-size:10px;color:#888;margin-top:6px;font-family:monospace">動画 ${fmt(s.t)}〜</div></div></div>`).join('')}
-    <div class="foot"><span>${esc(p.author)} ／ ステータス：${STATUS[p.status]}</span><span>動画から自動作成・編集</span></div>`;
+
+/* ===== フォーマット編集画面 ===== */
+async function viewTemplates(id) {
+  crumbs('<b>出力フォーマット</b>');
+  let T = getT(id || 'wi');
+  const sample = PROJECTS.find(x => x.videoKey === 'sample') || PROJECTS[0];
+  let prevId = (viewTemplates.prev && PROJECTS.find(x => x.id === viewTemplates.prev)) ? viewTemplates.prev : sample?.id;
+  const opt = (k, v, l) => `<option value="${v}" ${String(T[k]) === String(v) ? 'selected' : ''}>${l}</option>`;
+  const dis = T.builtin ? 'disabled' : '';
+  $('#view').innerHTML = `
+    <div class="row" style="margin-bottom:14px"><div class="grow"><h1>出力フォーマット</h1><p class="sub" style="margin:0">手順書の見た目を、列数・並び順・見出し項目・載せる欄の組み合わせで作れます。全マニュアルで共通に使えます。</p></div></div>
+    <div class="tpl">
+      <div class="card tpl-list">
+        <div class="sec"><h3>フォーマット一覧</h3>
+          <ul class="ovlist">${allTemplates().map(t => `<li data-tid="${t.id}" class="${t.id === T.id ? 'sel' : ''}"><span class="grow">${esc(t.name)}</span>${t.builtin ? '<span class="tag">標準</span>' : ''}</li>`).join('')}</ul>
+          <button class="btn sm" id="tDup" style="margin-top:10px;width:100%">＋ このフォーマットを複製して新規作成</button>
+        </div>
+        <div class="sec hint"><b>既存の帳票から作る</b><span class="tag">API接続予定</span><br>いま使っている作業指導書（PDF・Excel）を読み込ませて、AIがレイアウトを読み取り、近い設定を作る機能を想定しています。このデモでは未実装です。代わりに、上の「作業指導書（A4横・フロー型）」が、横型の作業指導書を例にした設定です。</div>
+      </div>
+      <div class="card tpl-form">
+        ${T.builtin ? `<div class="sec" style="background:var(--accent-soft)"><span class="hint">標準のフォーマットは直接は変更できません。「複製して新規作成」から編集してください。</span></div>` : ''}
+        <div class="sec"><h3>基本</h3>
+          <label class="f"><span>フォーマット名</span><input class="in" data-t="name" value="${esc(T.name)}" ${dis}></label>
+          <label class="f"><span>文書の見出し</span><input class="in" data-t="heading" value="${esc(T.heading)}" ${dis}></label>
+          <div class="two">
+            <label class="f"><span>用紙</span><select class="in" data-t="orient" ${dis}>${opt('orient', 'portrait', 'A4 縦')}${opt('orient', 'landscape', 'A4 横')}</select></label>
+            <label class="f"><span>見出しの言語</span><select class="in" data-t="lang" ${dis}>${Object.entries(LANGS).map(([k, v]) => opt('lang', k, v)).join('')}</select></label>
+            <label class="f"><span>文字サイズ</span><select class="in" data-t="fs" ${dis}>${opt('fs', 's', '小')}${opt('fs', 'm', '中')}${opt('fs', 'l', '大')}</select></label>
+            <label class="f"><span>罫線・見出しの色</span><div class="swatches" style="margin-top:4px">${DOC_COLORS.map(c => `<button class="sw ${T.color === c ? 'on' : ''}" data-tc="${c}" style="background:${c}" ${dis}></button>`).join('')}</div></label>
+          </div>
+        </div>
+        <div class="sec"><h3>手順の並べ方</h3>
+          <div class="two">
+            <label class="f"><span>列数 ${T.cols}</span><input type="range" min="1" max="6" data-t="cols" value="${T.cols}" ${dis} style="width:100%"></label>
+            <label class="f"><span>並び順</span><select class="in" data-t="flow" ${dis}>${opt('flow', 'z', '左→右（改行して左から）')}${opt('flow', 'snake', 'S字（行ごとに折り返し）')}</select></label>
+            <label class="f"><span>写真の位置</span><select class="in" data-t="imgPos" ${dis}>${opt('imgPos', 'above', '文章の上')}${opt('imgPos', 'below', '文章の下')}${opt('imgPos', 'left', '文章の左')}</select></label>
+            <label class="f"><span>写真の大きさ</span><select class="in" data-t="imgSize" ${dis}>${opt('imgSize', 's', '小')}${opt('imgSize', 'm', '中')}${opt('imgSize', 'l', '大')}</select></label>
+            <label class="f"><span>注意の出し方</span><select class="in" data-t="notesPos" ${dis}>${opt('notesPos', 'inline', '各手順の中')}${opt('notesPos', 'side', '右側の注意事項欄にまとめる')}${opt('notesPos', 'both', '両方')}</select></label>
+            <div>
+              <label class="row" style="font-size:13px;gap:6px;margin-top:18px"><input type="checkbox" data-t="arrows" ${T.arrows ? 'checked' : ''} ${dis}> 手順間に矢印</label>
+              <label class="row" style="font-size:13px;gap:6px;margin-top:4px"><input type="checkbox" data-t="showTime" ${T.showTime ? 'checked' : ''} ${dis}> 動画の時刻を表示</label>
+            </div>
+          </div>
+        </div>
+        <div class="sec"><h3>ヘッダーに出す項目</h3>
+          <div class="chkgrid">${HEADER_KEYS.map(k => `<label><input type="checkbox" data-h="${k}" ${T.header.includes(k) ? 'checked' : ''} ${dis}> ${LBL.ja[k]}</label>`).join('')}</div>
+          <p class="hint" style="margin:6px 0 0">「タイトル」を入れると、タイトルは表の中に入り、大見出しは「文書の見出し」になります。</p>
+        </div>
+        <div class="sec"><h3>載せる欄と順番</h3>
+          <ul class="seclist">${T.sections.map(([k, v], i) => `<li><label class="grow"><input type="checkbox" data-s="${k}" ${v ? 'checked' : ''} ${dis}> ${SECTION_NAMES[k]}</label><button class="btn sm ghost" data-su="${i}" ${dis || (i ? '' : 'disabled')}>↑</button><button class="btn sm ghost" data-sd="${i}" ${dis || (i < T.sections.length - 1 ? '' : 'disabled')}>↓</button></li>`).join('')}</ul>
+          <label class="row" style="font-size:13px;gap:6px;margin-top:8px"><input type="checkbox" data-t="footerRow" ${T.footerRow ? 'checked' : ''} ${dis}> 工具・材料／改訂履歴／承認欄を横一列に並べる</label>
+          <label class="f" style="margin-top:10px"><span>承認欄の項目（左から、カンマ区切り）</span><input class="in" data-t="sign" value="${esc(T.sign)}" ${dis}></label>
+          <label class="row" style="font-size:13px;gap:6px"><input type="checkbox" data-t="signReverse" ${T.signReverse ? 'checked' : ''} ${dis}> 右から左へ並べる（作成を右端に）</label>
+        </div>
+        ${T.builtin ? '' : `<div class="sec row"><button class="btn sm" id="tDel" style="color:var(--red);margin-left:auto">このフォーマットを削除</button></div>`}
+      </div>
+      <div class="tpl-prev">
+        <div class="row" style="margin-bottom:8px"><span class="muted" style="font-size:12px">プレビューに使うマニュアル</span><select class="in" id="tPrev" style="width:auto;max-width:260px">${PROJECTS.map(x => `<option value="${x.id}" ${x.id === prevId ? 'selected' : ''}>${esc(x.title)}</option>`).join('')}</select></div>
+        <div class="doc-fit"><div class="doc" id="doc"><div class="empty">組み立てています…</div></div></div>
+      </div>
+    </div>`;
+  let seq = 0;
+  const preview = async () => {
+    const p = PROJECTS.find(x => x.id === prevId); if (!p) return;
+    const my = ++seq; const imgs = await stepImages(p, true); if (my !== seq) return;
+    renderDoc($('#doc'), p, imgs, T); fitDoc($('#doc'));
+  };
+  const upd = (redraw) => { saveTemplates(); preview(); if (redraw) viewTemplates(T.id); };
+  $$('[data-tid]').forEach(li => li.onclick = () => { location.hash = `#/templates/${li.dataset.tid}`; });
+  $('#tPrev').onchange = e => { prevId = viewTemplates.prev = e.target.value; preview(); };
+  $('#tDup').onclick = () => {
+    const c = { ...structuredClone(T), id: 't_' + uid(), builtin: false, name: T.name.replace(/（コピー.*$/, '') + '（コピー）' };
+    CUSTOM_TEMPLATES.push(c); saveTemplates(); location.hash = `#/templates/${c.id}`; toast('複製しました。自由に変更できます');
+  };
+  if (T.builtin) { const ro = new ResizeObserver(() => fitDoc($('#doc'))); ro.observe($('.tpl-prev')); cleanup = () => ro.disconnect(); return preview(); }
+  $$('[data-t]').forEach(el => {
+    const k = el.dataset.t;
+    el.addEventListener(el.type === 'text' ? 'input' : 'change', () => {
+      T[k] = el.type === 'checkbox' ? el.checked : el.type === 'range' ? +el.value : el.value;
+      if (k === 'cols') el.previousElementSibling.textContent = '列数 ' + T.cols;
+      if (k === 'name') { $(`[data-tid="${T.id}"] .grow`).textContent = T.name; }
+      upd(false);
+    });
+    if (el.type === 'range') el.addEventListener('input', () => { T.cols = +el.value; el.previousElementSibling.textContent = '列数 ' + T.cols; upd(false); });
+  });
+  $$('[data-tc]').forEach(b => b.onclick = () => { T.color = b.dataset.tc; $$('[data-tc]').forEach(x => x.classList.toggle('on', x === b)); upd(false); });
+  $$('[data-h]').forEach(cb => cb.onchange = () => { T.header = HEADER_KEYS.filter(k => $(`[data-h="${k}"]`).checked); upd(false); });
+  $$('[data-s]').forEach(cb => cb.onchange = () => { T.sections.find(s => s[0] === cb.dataset.s)[1] = cb.checked ? 1 : 0; upd(false); });
+  const mv = (i, d) => { const a = T.sections; [a[i], a[i + d]] = [a[i + d], a[i]]; upd(true); };
+  $$('[data-su]').forEach(b => b.onclick = () => mv(+b.dataset.su, -1));
+  $$('[data-sd]').forEach(b => b.onclick = () => mv(+b.dataset.sd, 1));
+  $('#tDel').onclick = () => {
+    if (!confirm(`フォーマット「${T.name}」を削除しますか？使っているマニュアルは標準フォーマットに戻ります。`)) return;
+    CUSTOM_TEMPLATES = CUSTOM_TEMPLATES.filter(x => x !== T);
+    PROJECTS.filter(p => p.template === T.id).forEach(p => { p.template = 'std'; touch(p); });
+    saveTemplates(); location.hash = '#/templates/wi';
+  };
+  const ro = new ResizeObserver(() => fitDoc($('#doc'))); ro.observe($('.tpl-prev')); cleanup = () => ro.disconnect();
+  preview();
 }
+
 async function exportVideo(p) {
   const url = await videoURL(p);
   const mime = ['video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm'].find(m => window.MediaRecorder && MediaRecorder.isTypeSupported(m));
@@ -1072,11 +1266,40 @@ async function exportVideo(p) {
 /* ===== 文書情報・履歴 ===== */
 function tabInfo(p) {
   const f = (k, l, ph = '') => `<label class="f"><span>${l}</span><input class="in" data-k="${k}" value="${esc(p[k])}" placeholder="${ph}"></label>`;
-  $('#tabBody').innerHTML = `<div class="grid2"><div class="card pad"><h2>文書情報</h2>
-    <div class="fgrid">${f('equipment', '設備名')}${f('process', '工程')}${f('line', 'ライン / 場所')}${f('docNo', '文書番号')}${f('version', '版')}${f('target', '対象者')}${f('author', '作成部署')}${f('ppe', '必要な保護具（カンマ区切り）')}</div>
+  const ta = (k, l, v, ph, rows = 4) => `<label class="f"><span>${l}</span><textarea class="in mono-ish" data-l="${k}" rows="${rows}" placeholder="${ph}">${esc(v)}</textarea></label>`;
+  $('#tabBody').innerHTML = `<div class="grid2"><div style="display:flex;flex-direction:column;gap:14px"><div class="card pad"><h2>文書情報</h2>
+    <div class="fgrid">${f('equipment', '設備名・型式')}${f('process', '工程')}${f('line', 'ライン / 場所')}${f('docNo', '文書番号')}${f('version', '版')}${f('target', '対象者')}${f('author', '作成部署')}${f('ppe', '必要な保護具（カンマ区切り）')}</div>
     <div class="hint">元動画：${esc(p.videoName || '（未登録）')} ${p.videoKey ? `・ ${fmtS(p.duration)} ・ ${p.width}×${p.height}` : ''}</div></div>
+    <div class="card pad"><h2>手順書に載せる内容</h2><p class="hint" style="margin-top:-6px">出力フォーマットで表示する欄を選べます。1行に1件ずつ入力します。</p>
+      ${ta('specs', '仕様表（「項目: 値」）', p.specs.map(r => r.join(': ')).join('\n'), '例）巻線回数: 900Ts', 4)}
+      <div class="fgrid">${ta('tools', '工具・治具', p.tools.join('\n'), '例）トルクレンチ', 4)}${ta('materials', '使用材料', p.materials.join('\n'), '例）絶縁テープ W=17.5mm', 4)}</div>
+      ${ta('forms', '関連帳票（「帳票名 | 記入頻度」）', p.forms.map(r => r.join(' | ')).join('\n'), '例）設備始業点検表 | 始業前', 3)}
+      ${ta('notes', '注意事項（全体）', p.notes, '例）機械が完全に停止するまで扉を開けない', 3)}
+      ${ta('revisions', '改訂履歴（「版 | 内容 | 日付」）', p.revisions.map(r => r.join(' | ')).join('\n'), '例）1.0 | 初版発行 | 2026-06-02', 3)}
+    </div></div>
     <div class="card pad"><h2>変更履歴</h2><table class="t"><tbody>${[...p.history].reverse().map(h => `<tr><td class="mono" style="font-size:12px;white-space:nowrap">${esc(h.at)}</td><td>${esc(h.what)}<div class="muted" style="font-size:11px">${esc(h.who)}</div></td></tr>`).join('')}</tbody></table></div></div>`;
   $$('[data-k]').forEach(i => i.oninput = () => { p[i.dataset.k] = i.value; touch(p); });
+  const lines = v => v.split('\n').map(x => x.trim()).filter(Boolean);
+  const parse = { specs: v => lines(v).map(l => { const m = l.split(/[:：]/); return [m[0].trim(), m.slice(1).join(':').trim()]; }), tools: lines, materials: lines, notes: v => v,
+    forms: v => lines(v).map(l => { const m = l.split('|'); return [m[0].trim(), (m[1] || '').trim()]; }),
+    revisions: v => lines(v).map(l => { const m = l.split('|').map(x => x.trim()); return [m[0] || '', m[1] || '', m[2] || '']; }) };
+  $$('[data-l]').forEach(i => i.oninput = () => { p[i.dataset.l] = parse[i.dataset.l](i.value); touch(p); });
+}
+function sampleExtras() {
+  return {
+    template: 'wi',
+    specs: [['機械型式', 'MC-200'], ['主軸回転数', 'S=1200 min⁻¹'], ['運転モード', 'AUTO'], ['起動条件', '扉CLOSE・E-STOP解除'], ['所要時間', '約1分']],
+    tools: ['保護メガネ', '安全靴', '作業手袋', 'ウエス'],
+    materials: ['加工プログラム O1200', 'ワーク（素材）'],
+    forms: [['設備始業点検表', '始業前'], ['加工条件記録表', '段取り替え時'], ['不具合連絡票', '発生時']],
+    notes: '機械が完全に停止するまで、扉を開けない。\n異常があれば直ちに非常停止を押し、班長へ連絡する。\n機械の上に工具や部品を置かない。',
+    revisions: [['1.0', '初版発行', '2026-06-02'], ['1.1', '非常停止解除前の周囲確認を追加', '2026-08-18'], ['1.2', '扉の注意事項を「危険」に変更', '2026-09-26']],
+  };
+}
+function normalizeProject(p) {
+  p.template ??= 'std'; p.specs ??= []; p.tools ??= []; p.materials ??= []; p.forms ??= []; p.notes ??= '';
+  p.revisions ??= [[p.version, '初版発行', p.createdAt]];
+  return p;
 }
 
 /* ---------- 起動 ---------- */
@@ -1092,7 +1315,9 @@ function tabInfo(p) {
       for (const old of PROJECTS.filter(p => p.videoKey === 'sample')) { await DB.del(old.id); }
       PROJECTS = PROJECTS.filter(p => p.videoKey !== 'sample').concat(fresh); await DB.put(fresh); await DB.kvPut('seeded-v2', true);
     }
-  } catch (e) { console.warn('IndexedDB を使えないため、保存なしで動かします', e); PROJECTS = seedProjects(); DB.put = DB.del = DB.putBlob = DB.kvPut = async () => { }; }
+    for (const p of PROJECTS) { if (p.videoKey === 'sample' && !p.specs) Object.assign(p, sampleExtras()); normalizeProject(p); }
+    CUSTOM_TEMPLATES = (await DB.kvGet('templates')) || [];
+  } catch (e) { console.warn('IndexedDB を使えないため、保存なしで動かします', e); PROJECTS = seedProjects().map(normalizeProject); DB.put = DB.del = DB.putBlob = DB.kvPut = async () => { }; }
   window.addEventListener('hashchange', route);
   route();
 })();
