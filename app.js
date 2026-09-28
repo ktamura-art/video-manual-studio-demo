@@ -633,6 +633,8 @@ async function tabAnnot(p) {
         <button class="btn sm" id="addStep">＋ この位置で手順を追加</button>
         <button class="btn sm" id="setFrame" title="現在の手順の写真を、この位置のフレームに変更">📷 手順写真にする</button>
       </div>
+      <div class="lower-tabs" id="lowerTabs"><button data-lw="sum">📝 動画の要約</button><button data-lw="tl">⏱ タイムライン（注釈の時間調整）</button></div>
+      <div class="sum" id="sum"></div>
       <div class="tl" id="tl">
         <div class="tl-head"><span>タイムライン（上段：手順の区切り ／ 下段：注釈の表示時間）</span><span>クリックで移動・注釈はドラッグで時間調整</span></div>
         <div class="tl-body" id="tlBody"><div class="ruler" id="ruler"></div><div class="lanes" id="lanes"></div><div class="playhead" id="ph"></div></div>
@@ -650,6 +652,7 @@ async function tabAnnot(p) {
       touch(p, true); viewEditor(p.id, 'annot');
     };
     ['play', 'fb', 'ff', 'addStep', 'setFrame', 'rate'].forEach(i => $('#' + i).disabled = true);
+    $('#lowerTabs').hidden = $('#sum').hidden = true;
     $$('.tool,.sw').forEach(b => b.disabled = true);
     $('#sp').innerHTML = `<div class="sec hint">動画を登録すると、注釈を入れられるようになります。手順の文章は「② 手順を編集」から編集できます。</div>`;
     return;
@@ -674,7 +677,7 @@ async function tabAnnot(p) {
   const pushUndo = () => { E.undo.push(JSON.stringify(p.overlays)); if (E.undo.length > 40) E.undo.shift(); };
   const undo = () => { const s = E.undo.pop(); if (!s) { toast('これ以上戻せません'); return; } p.overlays = JSON.parse(s); if (!selO()) E.sel = null; changed(); };
   $('#undoBtn').onclick = undo;
-  function changed(skipPanel) { touch(p); drawOv(); drawTL(); if (!skipPanel) drawPanel(); }
+  function changed(skipPanel) { touch(p); drawOv(); drawTL(); drawSum(); if (!skipPanel) drawPanel(); }
 
   /* --- ステージ描画 --- */
   function drawOv() {
@@ -694,6 +697,8 @@ async function tabAnnot(p) {
     $('#blurs').innerHTML = vis.filter(o => o.type === 'blur').map(o => `<div style="left:${o.x / VW * 100}%;top:${o.y / p.vh * 100}%;width:${o.w / VW * 100}%;height:${o.h / p.vh * 100}%"></div>`).join('');
     $('#time').textContent = `${fmt(t)} / ${fmt(p.duration)}`;
     const ph = $('#ph'); if (ph) ph.style.left = (t / p.duration * 100) + '%';
+    const cs = stepAt(t)?.id;
+    if (cs !== drawOv.cur) { drawOv.cur = cs; $$('[data-sum]').forEach(li => li.classList.toggle('now', li.dataset.sum === cs)); }
   }
   const pt = e => { const r = ov.getBoundingClientRect(); return { x: (e.clientX - r.left) / r.width * VW, y: (e.clientY - r.top) / r.height * p.vh }; };
   const stepAt = t => { let s = null; p.steps.forEach(x => { if (x.t <= t + 0.01) s = x; }); return s; };
@@ -801,7 +806,7 @@ async function tabAnnot(p) {
     const t = +vid.currentTime.toFixed(2);
     if (p.steps.some(s => Math.abs(s.t - t) < .3)) { toast('この位置にはすでに手順があります'); return; }
     p.steps.push({ id: uid(), t, ft: t, title: '新しい手順', desc: '', lv: 'none', ct: '', ai: false }); p.steps.sort((a, b) => a.t - b.t);
-    touch(p); drawTL(); drawPanel(); $('.tabs a:nth-child(2) span').textContent = p.steps.length; toast(`${fmt(t)} に手順を追加しました`);
+    touch(p); drawTL(); drawSum(); drawPanel(); $('.tabs a:nth-child(2) span').textContent = p.steps.length; toast(`${fmt(t)} に手順を追加しました`);
   };
   $('#setFrame').onclick = () => { const s = stepAt(vid.currentTime); if (!s) return; s.ft = +vid.currentTime.toFixed(2); touch(p); toast(`「${s.title}」の写真を ${fmt(s.ft)} のフレームに変更しました`); };
 
@@ -849,6 +854,49 @@ async function tabAnnot(p) {
     if (tdrag && tdrag.o) { if (!tdrag.moved) { E.undo.pop(); if (vid.currentTime < tdrag.o.start || vid.currentTime >= tdrag.o.end) seek(tdrag.o.start + 0.01); } else touch(p); }
     tdrag = null;
   };
+
+  /* --- 動画の要約（議事録形式） --- */
+  const setLower = k => { E.lower = k; $$('[data-lw]').forEach(b => b.classList.toggle('on', b.dataset.lw === k)); $('#sum').hidden = k !== 'sum'; $('#tl').hidden = k !== 'tl'; };
+  $$('[data-lw]').forEach(b => b.onclick = () => setLower(b.dataset.lw));
+  function drawSum() {
+    const D = p.duration || 0, steps = [...p.steps].sort((a, b) => a.t - b.t);
+    const lines = s => String(s || '').split('\n').map(x => x.trim()).filter(Boolean);
+    const cnt = { danger: 0, warning: 0, caution: 0 }; steps.forEach(s => { if (cnt[s.lv] != null) cnt[s.lv]++; });
+    const nSafe = cnt.danger + cnt.warning + cnt.caution;
+    const ppe = lines(String(p.ppe || '').replace(/[,、]/g, '\n'));
+    const lvB = lv => lv && lv !== 'none' ? `<span class="lvb ${lv}">${LV[lv]}</span>` : '';
+    const meta = [['設備', p.equipment], ['工程・場所', [p.process, p.line].filter(Boolean).join(' ／ ')], ['対象者', p.target], ['動画の長さ', D ? `${fmtS(D)}（${D.toFixed(0)} 秒）` : ''], ['手順数', `${steps.length} 手順`], ['必要な保護具', ppe.join('・')]].filter(([, v]) => v);
+    let overview = `この動画は、${p.equipment && !p.title.includes(p.equipment) ? `${esc(p.equipment)}の` : ''}「${esc(p.title)}」を <b>${steps.length} つの手順</b>で説明しています。`;
+    if (nSafe) overview += `うち <b>${nSafe} 手順</b>に安全上の注意があります（${[['danger', '危険'], ['warning', '警告'], ['caution', '注意']].filter(([k]) => cnt[k]).map(([k, l]) => `${l} ${cnt[k]}`).join('・')}）。`;
+    if (ppe.length) overview += `作業前に ${esc(ppe.join('・'))} を着用します。`;
+    const flow = steps.map(s => esc(s.title)).join(' → ');
+    const checks = []; steps.forEach((s, i) => lines(s.desc).forEach(l => { if (/確認/.test(l)) checks.push({ i, s, l }); }));
+    const items = steps.map((s, i) => {
+      const end = steps[i + 1]?.t ?? D;
+      const screen = p.overlays.filter(o => ['text', 'callout'].includes(o.type) && o.text && o.start >= s.t - 0.05 && o.start < end).sort((a, b) => a.start - b.start).map(o => `「${esc(o.text)}」`);
+      const body = lines(s.desc);
+      return `<li data-sum="${s.id}">
+        <button class="sum-t mono" data-seek="${s.t + 0.05}" title="この場面へ移動">${fmt(s.t).slice(0, 5)}<small>–${fmt(end).slice(0, 5)}</small></button>
+        <div class="sum-b"><div class="sum-ttl"><b>${i + 1}. ${esc(s.title)}</b>${lvB(s.lv)}</div>
+          ${body.length ? `<ul>${body.map(l => `<li>${esc(l)}</li>`).join('')}</ul>` : '<p class="muted">説明文はまだありません（「② 手順を編集」で追加できます）</p>'}
+          ${screen.length ? `<div class="sum-screen"><span>画面の表示</span>${screen.join(' ')}</div>` : ''}
+          ${s.ct ? `<div class="sum-ct ${s.lv}">⚠ ${esc(s.ct)}</div>` : ''}</div></li>`;
+    }).join('');
+    const safety = steps.map((s, i) => ({ s, i })).filter(({ s }) => s.lv !== 'none' || s.ct);
+    $('#sum').innerHTML = `
+      <div class="sum-head"><div><h3>動画の要約</h3><span class="muted">動画の説明内容を議事録の形にまとめています。時刻を押すとその場面へ移動します。</span></div><span class="tag">AI下書き</span></div>
+      <dl class="sum-meta">${meta.map(([k, v]) => `<div><dt>${k}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl>
+      <section class="sum-sec"><h4>概要</h4><p>${overview}</p>${steps.length > 1 ? `<p class="sum-flow"><span>流れ</span>${flow}</p>` : ''}</section>
+      <section class="sum-sec"><h4>手順ごとの内容</h4><ol class="sum-steps">${items || '<p class="muted">手順がまだありません。</p>'}</ol></section>
+      <div class="sum-2">
+        <section class="sum-sec"><h4>安全上の注意</h4>${safety.length ? `<ul class="sum-list">${safety.map(({ s, i }) => `<li>${lvB(s.lv)}<span><b>手順${i + 1}</b> ${esc(s.ct || s.title)}</span></li>`).join('')}</ul>` : '<p class="muted">特になし</p>'}
+          ${p.notes ? `<ul class="sum-list plain">${lines(p.notes).map(l => `<li><span>${esc(l)}</span></li>`).join('')}</ul>` : ''}</section>
+        <section class="sum-sec"><h4>確認ポイント</h4>${checks.length ? `<ul class="sum-list checks">${checks.map(c => `<li><span class="box"></span><span><b>手順${c.i + 1}</b> ${esc(c.l.replace(/。$/, ''))}</span></li>`).join('')}</ul>` : '<p class="muted">説明文に「確認」を含む項目はありません</p>'}</section>
+      </div>`;
+    $$('[data-seek]', $('#sum')).forEach(b => b.onclick = () => seek(+b.dataset.seek));
+    drawOv.cur = undefined; drawOv();
+  }
+  setLower(E.lower || 'sum');
 
   /* --- 右パネル --- */
   function drawPanel() {
@@ -910,7 +958,7 @@ async function tabAnnot(p) {
   document.addEventListener('keydown', onKey);
   const ro = new ResizeObserver(() => drawOv()); ro.observe(stage);
   cleanup = () => { document.removeEventListener('keydown', onKey); cancelAnimationFrame(raf); ro.disconnect(); vid.pause(); E.t = vid.currentTime; };
-  drawOv(); drawTL(); drawPanel();
+  drawOv(); drawTL(); drawSum(); drawPanel();
 }
 function shrinkImage(src, max) {
   return new Promise(res => {
