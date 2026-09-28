@@ -19,6 +19,125 @@ const FLOW = ['draft', 'review', 'approved', 'published'];
 const LV = { none: 'なし', caution: '注意', warning: '警告', danger: '危険' };
 const TYPE_LABEL = { rect: '四角', ellipse: '円', arrow: '矢印', text: 'ラベル', number: '番号', callout: '吹き出し', blur: 'ぼかし', image: '画像' };
 
+/* ---------- 多言語（内容の翻訳） ---------- */
+const CLANGS = { ja: '日本語', en: 'English', zh: '中文', th: 'ไทย' };
+const TR_LANGS = ['en', 'zh', 'th'];
+let CUR_LANG = (() => { try { return CLANGS[localStorage.getItem('curLang')] ? localStorage.getItem('curLang') : 'ja'; } catch { return 'ja'; } })();
+const setCurLang = l => { CUR_LANG = l; try { localStorage.setItem('curLang', l); } catch { } };
+const LV_I18N = {
+  ja: { caution: '注意', warning: '警告', danger: '危険' }, en: { caution: 'CAUTION', warning: 'WARNING', danger: 'DANGER' },
+  zh: { caution: '注意', warning: '警告', danger: '危险' }, th: { caution: 'ข้อควรระวัง', warning: 'คำเตือน', danger: 'อันตราย' },
+};
+/* よく使う語（対象者・保護具）の訳 */
+const TERM_TR = {
+  '新任オペレーター': { en: 'New operators', zh: '新任操作员', th: 'พนักงานควบคุมเครื่องใหม่' }, '全作業者': { en: 'All workers', zh: '全体作业人员', th: 'พนักงานทุกคน' },
+  '保全担当': { en: 'Maintenance staff', zh: '维修保养人员', th: 'เจ้าหน้าที่ซ่อมบำรุง' }, '外国人技能実習生': { en: 'Foreign technical trainees', zh: '外国技能实习生', th: 'ผู้ฝึกงานด้านเทคนิคชาวต่างชาติ' },
+  '保護メガネ': { en: 'Safety glasses', zh: '防护眼镜', th: 'แว่นตานิรภัย' }, '安全靴': { en: 'Safety shoes', zh: '安全鞋', th: 'รองเท้านิรภัย' },
+  '作業手袋': { en: 'Work gloves', zh: '作业手套', th: 'ถุงมือทำงาน' }, 'ヘルメット': { en: 'Helmet', zh: '安全帽', th: 'หมวกนิรภัย' }, '耳栓': { en: 'Earplugs', zh: '耳塞', th: 'ที่อุดหู' },
+};
+let SHOW_JA = (() => { try { return localStorage.getItem('showJa') !== '0'; } catch { return true; } })();
+const setShowJa = v => { SHOW_JA = v; try { localStorage.setItem('showJa', v ? '1' : '0'); } catch { } };
+/* 動画の要約の見出し・定型文 */
+const SUM_L = {
+  ja: { h: '動画の要約', lead: '動画の説明内容を議事録の形にまとめています。時刻を押すとその場面へ移動します。', ai: 'AI下書き', eq: '設備', proc: '工程・場所', target: '対象者', dur: '動画の長さ', n: '手順数', ppe: '必要な保護具',
+    ov: '概要', flow: '流れ', steps: '手順ごとの内容', screen: '画面の表示', safety: '安全上の注意', checks: '確認ポイント', none: '特になし', noDesc: '説明文はまだありません（「② 手順を編集」で追加できます）', noCheck: '説明文に「確認」を含む項目はありません', noSteps: '手順がまだありません。',
+    step: n => `手順${n}`, nSteps: n => `${n} 手順`, sec: n => `${n} 秒`, sep: '・', q: t => `「${t}」`, seek: 'この場面へ移動',
+    overview: o => `この動画は、${o.eq ? `${o.eq}の` : ''}「${o.title}」を <b>${o.n} つの手順</b>で説明しています。${o.nSafe ? `うち <b>${o.nSafe} 手順</b>に安全上の注意があります（${o.parts}）。` : ''}${o.ppe ? `作業前に ${o.ppe} を着用します。` : ''}` },
+  en: { h: 'Video summary', lead: 'What the video explains, organized like meeting minutes. Click a time to jump to that scene.', ai: 'AI draft', eq: 'Equipment', proc: 'Process / Location', target: 'Intended for', dur: 'Video length', n: 'Steps', ppe: 'Required PPE',
+    ov: 'Overview', flow: 'Flow', steps: 'Step by step', screen: 'On screen', safety: 'Safety notes', checks: 'Checkpoints', none: 'None', noDesc: 'No description yet.', noCheck: 'No checkpoints.', noSteps: 'No steps yet.',
+    step: n => `Step ${n}`, nSteps: n => `${n} steps`, sec: n => `${n} s`, sep: ', ', q: t => `“${t}”`, seek: 'Jump to this scene',
+    overview: o => `This video explains “${o.title}” in <b>${o.n} steps</b>.${o.nSafe ? ` <b>${o.nSafe} of them</b> include safety notes (${o.parts}).` : ''}${o.ppe ? ` Wear ${o.ppe} before starting work.` : ''}` },
+  zh: { h: '视频摘要', lead: '以会议纪要的形式整理视频中的讲解内容。点击时间可跳转到对应画面。', ai: 'AI草稿', eq: '设备', proc: '工序・地点', target: '适用人员', dur: '视频时长', n: '步骤数', ppe: '所需防护用品',
+    ov: '概要', flow: '流程', steps: '各步骤内容', screen: '画面提示', safety: '安全注意事项', checks: '确认要点', none: '无', noDesc: '暂无说明。', noCheck: '无确认要点。', noSteps: '暂无步骤。',
+    step: n => `步骤${n}`, nSteps: n => `${n} 个步骤`, sec: n => `${n} 秒`, sep: '、', q: t => `「${t}」`, seek: '跳转到此画面',
+    overview: o => `本视频分 <b>${o.n} 个步骤</b>讲解「${o.title}」。${o.nSafe ? `其中 <b>${o.nSafe} 个步骤</b>含有安全注意事项（${o.parts}）。` : ''}${o.ppe ? `作业前请佩戴${o.ppe}。` : ''}` },
+  th: { h: 'สรุปวิดีโอ', lead: 'สรุปเนื้อหาที่อธิบายในวิดีโอในรูปแบบบันทึกการประชุม คลิกที่เวลาเพื่อไปยังฉากนั้น', ai: 'ร่างโดย AI', eq: 'เครื่องจักร', proc: 'กระบวนการ / สถานที่', target: 'กลุ่มเป้าหมาย', dur: 'ความยาววิดีโอ', n: 'จำนวนขั้นตอน', ppe: 'อุปกรณ์ป้องกันที่ต้องใช้',
+    ov: 'ภาพรวม', flow: 'ลำดับงาน', steps: 'รายละเอียดแต่ละขั้นตอน', screen: 'ข้อความบนจอ', safety: 'ข้อควรระวังด้านความปลอดภัย', checks: 'จุดตรวจสอบ', none: 'ไม่มี', noDesc: 'ยังไม่มีคำอธิบาย', noCheck: 'ไม่มีจุดตรวจสอบ', noSteps: 'ยังไม่มีขั้นตอน',
+    step: n => `ขั้นตอนที่ ${n}`, nSteps: n => `${n} ขั้นตอน`, sec: n => `${n} วินาที`, sep: ' ・ ', q: t => `"${t}"`, seek: 'ไปยังฉากนี้',
+    overview: o => `วิดีโอนี้อธิบาย "${o.title}" ใน <b>${o.n} ขั้นตอน</b>${o.nSafe ? ` โดยมี <b>${o.nSafe} ขั้นตอน</b>ที่มีข้อควรระวังด้านความปลอดภัย (${o.parts})` : ''}${o.ppe ? ` กรุณาสวม${o.ppe}ก่อนเริ่มงาน` : ''}` },
+};
+const tTerm = (v, l) => l === 'ja' ? v : (TERM_TR[v]?.[l] || v);
+const srcOf = s => `${s.title}\n${s.desc}\n${s.ct}`;
+/* 手順の文を指定言語で（未翻訳は日本語のまま） */
+const stT = (s, l, k) => l === 'ja' ? s[k] : (s.tr?.[l]?.[k] || s[k]);
+function stState(s, l) {
+  if (l === 'ja') return 'src';
+  const t = s.tr?.[l]; if (!t || !(t.title || t.desc)) return 'none';
+  return t.src != null && t.src !== srcOf(s) ? 'stale' : 'ok';
+}
+const trCount = (p, l) => p.steps.filter(s => stState(s, l) !== 'none').length;
+/* 文書情報（タイトル・設備名など）は、訳したときの原文と一致するときだけ訳を使う */
+const metaT = (p, l, k) => { const m = p.trMeta?.[l]; return l !== 'ja' && m?.[k] && m['_' + k] === p[k] ? m[k] : p[k]; };
+const ovHasText = o => ['text', 'callout'].includes(o.type) && o.text;
+const ovT = (o, l) => l === 'ja' || !ovHasText(o) ? o.text : (o.tr?.[l] || o.text);
+/* 訳文が枠に収まるよう文字を小さくする */
+const fitCv = document.createElement('canvas').getContext('2d');
+function ovDisp(o, l) {
+  const text = ovT(o, l); if (text === o.text) return o;
+  const room = o.w - (o.type === 'callout' ? 26 : 16); let fs = o.fs;
+  const widest = f => { fitCv.font = `700 ${f}px "Noto Sans JP","Noto Sans Thai","Noto Sans SC",sans-serif`; return Math.max(...String(text).split('\n').map(x => fitCv.measureText(x).width)); };
+  while (fs > 12 && widest(fs) > room) fs--;
+  return { ...o, text, fs };
+}
+/* 指定言語に置き換えたプロジェクトの写し（出力・書き出し用） */
+function locP(p, l) {
+  if (l === 'ja') return p;
+  return { ...p, title: metaT(p, l, 'title'), equipment: metaT(p, l, 'equipment'), process: metaT(p, l, 'process'), line: metaT(p, l, 'line'), notes: metaT(p, l, 'notes'), target: tTerm(p.target, l),
+    ppe: String(p.ppe || '').split(/[,、]/).map(x => tTerm(x.trim(), l)).join(', '),
+    steps: p.steps.map(s => ({ ...s, title: stT(s, l, 'title'), desc: stT(s, l, 'desc'), ct: stT(s, l, 'ct') })), overlays: p.overlays.map(o => ovDisp(o, l)) };
+}
+const langBar = (id, cur, p) => `<div class="langbar" id="${id}" role="group" aria-label="言語">${Object.entries(CLANGS).map(([k, v]) => `<button data-lang="${k}" lang="${k}" class="${k === cur ? 'on' : ''}">${v}${k !== 'ja' && p ? `<small>${trCount(p, k)}/${p.steps.length}</small>` : ''}</button>`).join('')}</div>`;
+
+/* サンプル動画の訳（本番では翻訳APIで作る） */
+const SAMPLE_TR = [
+  { en: ['Pre-work check', 'Visually inspect the whole machine and confirm that no tools or foreign objects are left inside the machining chamber or around it.', 'Put on safety glasses and safety shoes before starting work.'],
+    zh: ['作业前确认', '目视检查整台设备，确认加工室内及周边没有遗留工具或异物。', '请先佩戴防护眼镜和安全鞋，再开始作业。'],
+    th: ['ตรวจสอบก่อนเริ่มงาน', 'ตรวจดูเครื่องจักรทั้งหมดด้วยสายตา และยืนยันว่าไม่มีเครื่องมือหรือสิ่งแปลกปลอมหลงเหลืออยู่ภายในห้องตัดเฉือนหรือบริเวณรอบๆ', 'สวมแว่นตานิรภัยและรองเท้านิรภัยก่อนเริ่มงาน'] },
+  { en: ['Turn on the main power', 'Turn the main power switch at the upper left of the control panel 90° to the right (ON).\nConfirm that the power lamp (yellow) is lit.', ''],
+    zh: ['打开主电源', '将操作面板左上方的主电源开关向右（ON）旋转90°。\n确认电源指示灯（黄色）已点亮。', ''],
+    th: ['เปิดสวิตช์ไฟหลัก', 'หมุนสวิตช์ไฟหลักที่มุมซ้ายบนของแผงควบคุมไปทางขวา (ON) 90°\nยืนยันว่าไฟแสดงสถานะไฟฟ้า (สีเหลือง) ติดสว่าง', ''] },
+  { en: ['Release the emergency stop', 'Turn the emergency stop button to the right to release it.\nConfirm that E-STOP on the screen shows "OK".', 'Before releasing, make sure no one is near the machine.'],
+    zh: ['解除急停', '向右旋转急停按钮以解除。\n确认画面上的 E-STOP 显示为"OK"。', '解除前，请确认设备周围无人。'],
+    th: ['ปลดปุ่มหยุดฉุกเฉิน', 'หมุนปุ่มหยุดฉุกเฉินไปทางขวาเพื่อปลดล็อก\nยืนยันว่าหน้าจอแสดง E-STOP เป็น "OK"', 'ก่อนปลดล็อก ให้ตรวจสอบว่าไม่มีคนอยู่รอบเครื่องจักร'] },
+  { en: ['Switch the operation mode to AUTO', 'Turn the mode selector dial from MAN to AUTO.\nConfirm that "MODE : AUTO" is displayed on the screen.', ''],
+    zh: ['将运行模式切换为 AUTO', '将模式切换旋钮从 MAN 旋至 AUTO。\n确认画面上显示"MODE : AUTO"。', ''],
+    th: ['เปลี่ยนโหมดการทำงานเป็น AUTO', 'หมุนปุ่มเลือกโหมดจาก MAN ไปที่ AUTO\nยืนยันว่าหน้าจอแสดง "MODE : AUTO"', ''] },
+  { en: ['Close the machining chamber door', 'Slide the door of the machining chamber to the right and close it completely.\nConfirm that DOOR on the screen shows "CLOSE".', 'Never operate with the door open. Never put your hands near rotating parts.'],
+    zh: ['关闭加工室门', '将加工室门向右滑动，完全关闭。\n确认画面上的 DOOR 显示为"CLOSE"。', '禁止在门打开的状态下运行。禁止将手伸入旋转部位。'],
+    th: ['ปิดประตูห้องตัดเฉือน', 'เลื่อนประตูห้องตัดเฉือนไปทางขวาจนปิดสนิท\nยืนยันว่าหน้าจอแสดง DOOR เป็น "CLOSE"', 'ห้ามเดินเครื่องขณะประตูเปิดอยู่ ห้ามยื่นมือเข้าใกล้ชิ้นส่วนที่หมุน'] },
+  { en: ['Press the start button', 'Press the start button (green).\nConfirm that the start lamp lights up and the spindle rotates (S=1200).', 'If there is any abnormal noise or vibration, press the emergency stop button immediately.'],
+    zh: ['按下启动按钮', '按下启动按钮（绿色）。\n确认启动指示灯点亮，主轴开始旋转（S=1200）。', '如有异响、振动等异常，请立即按下急停按钮。'],
+    th: ['กดปุ่มเริ่มทำงาน', 'กดปุ่มเริ่มทำงาน (สีเขียว)\nยืนยันว่าไฟแสดงการเริ่มทำงานติดสว่าง และแกนหมุนกำลังหมุน (S=1200)', 'หากมีเสียงผิดปกติหรือการสั่นสะเทือน ให้กดปุ่มหยุดฉุกเฉินทันที'] },
+];
+const SAMPLE_OV_TR = {
+  'この操作盤で操作します': { en: 'Operate from this panel', zh: '在此操作面板上操作', th: 'ใช้งานที่แผงควบคุมนี้' },
+  '右へ90°回して ON': { en: 'Turn 90° right to ON', zh: '向右旋转90°打开', th: 'หมุนขวา 90° เพื่อเปิด' },
+  '電源ランプの点灯を確認': { en: 'Check the power lamp is on', zh: '确认电源灯已亮', th: 'ตรวจสอบว่าไฟติด' },
+  '右に回して解除': { en: 'Turn right to release', zh: '向右旋转解除', th: 'หมุนขวาเพื่อปลดล็อก' },
+  '画面で E-STOP: OK を確認': { en: 'Check E-STOP: OK on screen', zh: '在画面确认 E-STOP: OK', th: 'ดูหน้าจอ E-STOP: OK' },
+  'MAN → AUTO へ回す': { en: 'Turn MAN → AUTO', zh: '从 MAN 旋至 AUTO', th: 'หมุน MAN → AUTO' },
+  '扉を右へスライド': { en: 'Slide the door right', zh: '将门向右滑动', th: 'เลื่อนประตูไปทางขวา' },
+  '⚠ 扉が開いた状態で運転しない': { en: '⚠ Never run with the door open', zh: '⚠ 禁止开门运行', th: '⚠ ห้ามเดินเครื่องขณะประตูเปิด' },
+  '起動ボタン（緑）を押す': { en: 'Press start (green)', zh: '按下启动按钮（绿）', th: 'กดปุ่มเริ่ม (สีเขียว)' },
+  '異常時は直ちに非常停止': { en: 'If abnormal, E-stop at once', zh: '异常时立即急停', th: 'หากผิดปกติ กดหยุดฉุกเฉินทันที' },
+};
+const SAMPLE_META_TR = {
+  title: ['MC-200 横形加工機 起動手順', { en: 'MC-200 Horizontal Machining Center: Start-up Procedure', zh: 'MC-200 卧式加工中心 启动步骤', th: 'ขั้นตอนการเริ่มเดินเครื่อง MC-200 แมชชีนนิ่งเซ็นเตอร์แนวนอน' }],
+  equipment: ['MC-200 横形加工機', { en: 'MC-200 Horizontal Machining Center', zh: 'MC-200 卧式加工中心', th: 'MC-200 แมชชีนนิ่งเซ็นเตอร์แนวนอน' }],
+  process: ['機械加工', { en: 'Machining', zh: '机械加工', th: 'งานแมชชีนนิ่ง' }],
+  line: ['第2工場 ライン3', { en: 'Plant 2, Line 3', zh: '第2工厂 3号线', th: 'โรงงาน 2 ไลน์ 3' }],
+  notes: ['機械が完全に停止するまで、扉を開けない。\n異常があれば直ちに非常停止を押し、班長へ連絡する。\n機械の上に工具や部品を置かない。', {
+    en: 'Do not open the door until the machine has completely stopped.\nIf anything is abnormal, press the emergency stop immediately and contact your team leader.\nDo not place tools or parts on the machine.',
+    zh: '机器完全停止前，不得打开门。\n如有异常，立即按下急停按钮并联系班长。\n不得在机器上放置工具或零件。',
+    th: 'ห้ามเปิดประตูจนกว่าเครื่องจักรจะหยุดสนิท\nหากพบสิ่งผิดปกติ ให้กดปุ่มหยุดฉุกเฉินทันทีและแจ้งหัวหน้างาน\nห้ามวางเครื่องมือหรือชิ้นส่วนไว้บนเครื่องจักร' }],
+};
+function applySampleTr(p) {
+  p.steps.forEach((s, i) => { const t = SAMPLE_TR[i]; if (!t || s.title !== SAMPLE_STEPS[i]?.title) return; s.tr = {}; TR_LANGS.forEach(l => { const [title, desc, ct] = t[l]; s.tr[l] = { title, desc, ct, src: srcOf(s) }; }); });
+  p.overlays.forEach(o => { if (SAMPLE_OV_TR[o.text]) o.tr = { ...SAMPLE_OV_TR[o.text] }; });
+  p.trMeta = {}; TR_LANGS.forEach(l => { p.trMeta[l] = {}; Object.entries(SAMPLE_META_TR).forEach(([k, [ja, tr]]) => { p.trMeta[l][k] = tr[l]; p.trMeta[l]['_' + k] = ja; }); });
+  return p;
+}
+
 /* ---------- IndexedDB ---------- */
 const DB = {
   db: null,
@@ -108,6 +227,7 @@ function seedProjects() {
     status: 'review', createdAt: d(2), videoKey: 'sample', videoName: 'mc200_startup.mp4', duration: 26, steps: mkSteps(SAMPLE_STEPS), overlays: sampleOverlays(), images: { ppe: PPE_SVG }, ...sampleExtras(),
     history: [{ at: d(2), who: '製造技術課', what: '動画から自動生成（6手順）' }, { at: d(1), who: '製造技術課', what: '注釈23件を追加・レビュー依頼' }],
   });
+  applySampleTr(sample);
   const dummy = (title, equipment, process, line, status, days, no, steps) => baseProject({ title, equipment, process, line, status, createdAt: d(days), docNo: no, videoName: '', duration: steps.length * 5, steps: mkSteps(steps.map((s, i) => ({ t: i * 5, ...s }))), history: [{ at: d(days), who: '製造技術課', what: '動画から自動生成' }] });
   return [
     sample,
@@ -272,7 +392,7 @@ function viewSettings() {
     </div>
     <h2 style="margin-top:8px">文章</h2>
     <div class="fgrid">
-      <label class="f"><span>出力言語</span><select class="in" id="s-lang"><option value="ja">日本語</option><option value="ja-en">日本語＋英語併記</option><option value="ja-vi">日本語＋ベトナム語併記</option></select></label>
+      <label class="f"><span>出力言語</span><select class="in" id="s-lang"><option value="ja">日本語</option><option value="ja-en">日本語＋英語併記</option><option value="ja-zh">日本語＋中国語併記</option><option value="ja-th">日本語＋タイ語併記</option></select></label>
       <label class="f"><span>文体</span><select class="in" id="s-style"><option value="desu">です・ます調</option><option value="dearu">である調（〜する）</option></select></label>
     </div>
     <label class="f"><span>保護具（手順書の冒頭に表示する既定値）</span><input class="in" id="s-ppe" value="${esc(s.ppe)}"></label>
@@ -371,6 +491,7 @@ function viewUpload() {
       ['frame', '代表フレーム抽出', '各手順の写真に使う1枚を選ぶ'],
       ['asr', '音声の文字起こし', '', 'API接続予定'],
       ['gen', '手順文・注意事項の下書き', '', 'API接続予定'],
+      ['tr', '多言語に翻訳（English・中文・ไทย）', '', 'API接続予定'],
     ];
     $('#pipe').innerHTML = STEPS.map(([k, t, d, tag]) => `<li data-k="${k}"><span class="dot"></span><div class="grow"><b>${t}</b>${tag ? `<span class="tag">${tag}</span>` : ''}<small>${d}</small></div></li>`).join('');
     const st = (k, s, note) => { const li = $(`#pipe [data-k="${k}"]`); if (!li) return; li.className = s; if (note != null) $('small', li).innerHTML = note; };
@@ -430,6 +551,8 @@ function viewUpload() {
     st('asr', 'done', useScript ? 'サンプル動画のため、用意した台本を使用' : 'デモのため未実行（本番では音声からナレーションを文字起こし）');
     st('gen', 'run'); await sleep(600);
     st('gen', 'done', useScript ? '台本から手順タイトル・本文・注意事項を当てはめ' : 'デモのため未実行（手順の枠と代表フレームのみ作成）');
+    st('tr', 'run'); await sleep(500);
+    st('tr', 'done', useScript ? 'サンプル動画のため、用意した訳文（英語・中国語・タイ語）を使用' : 'デモのため未実行（「② 手順を編集」で言語を選ぶと手入力できます）');
     // プロジェクト作成
     let steps;
     if (useScript) {
@@ -443,6 +566,7 @@ function viewUpload() {
       steps, overlays: useScript ? sampleOverlays() : [], images: useScript ? { ppe: PPE_SVG } : {}, ...(useScript ? sampleExtras() : {}),
       history: [{ at: today(), who: '製造技術課', what: `動画から自動生成（${steps.length}手順）` }],
     });
+    if (useScript) applySampleTr(p);
     await DB.put(p); PROJECTS.push(p);
     $('#pipeDone').innerHTML = `<div class="row"><b class="grow">下書きができました（${steps.length} 手順${useScript ? ` ・ 注釈 ${p.overlays.length} 件` : ''}）</b><a class="btn primary" href="#/edit/${p.id}/annot">注釈を編集する →</a></div>`;
   }
@@ -478,7 +602,7 @@ function tailGeom(o) {
 const textInk = c => (c === '#ffffff' || c === '#f2c200') ? '#1a1a1a' : '#ffffff';
 function svgText(o, x, y, w, h, fill) {
   const lines = String(o.text || '').split('\n'), lh = o.fs * 1.3, y0 = y + h / 2 - (lines.length - 1) * lh / 2;
-  return `<text x="${x + w / 2}" font-size="${o.fs}" font-weight="700" text-anchor="middle" dominant-baseline="central" fill="${fill}" style="font-family:'Noto Sans JP','Hiragino Sans',sans-serif">${lines.map((l, i) => `<tspan x="${x + w / 2}" y="${y0 + i * lh}">${esc(l)}</tspan>`).join('')}</text>`;
+  return `<text x="${x + w / 2}" font-size="${o.fs}" font-weight="700" text-anchor="middle" dominant-baseline="central" fill="${fill}" style="font-family:'Noto Sans JP','Noto Sans Thai','Noto Sans SC','Hiragino Sans',sans-serif">${lines.map((l, i) => `<tspan x="${x + w / 2}" y="${y0 + i * lh}">${esc(l)}</tspan>`).join('')}</text>`;
 }
 function ovSVG(o, images, editing) {
   const c = o.color, sw = o.sw;
@@ -502,7 +626,7 @@ function loadImg(src) {
 function rr(g, x, y, w, h, r) { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
 function cvText(g, o, x, y, w, h, fill) {
   const lines = String(o.text || '').split('\n'), lh = o.fs * 1.3, y0 = y + h / 2 - (lines.length - 1) * lh / 2;
-  g.fillStyle = fill; g.font = `700 ${o.fs}px "Noto Sans JP","Hiragino Sans",sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillStyle = fill; g.font = `700 ${o.fs}px "Noto Sans JP","Noto Sans Thai","Noto Sans SC","Hiragino Sans",sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
   lines.forEach((l, i) => g.fillText(l, x + w / 2, y0 + i * lh));
 }
 /* ctx は VW 単位に scale 済みであること */
@@ -620,7 +744,7 @@ async function tabAnnot(p) {
         <span class="grow"></span>
         <button class="tool" id="undoBtn" title="元に戻す（⌘Z / Ctrl+Z）">↶ 元に戻す</button>
       </div>
-      <div class="stage-wrap">
+      <div class="stage-wrap"><div class="lang-badge" id="langBadge" ${CUR_LANG === 'ja' ? 'hidden' : ''}>注釈の表示言語：${CLANGS[CUR_LANG]}</div>
         ${url ? `<div class="stage" id="stage"><video id="vid" src="${url}" playsinline preload="auto"></video><div class="blurs" id="blurs"></div><svg class="ov" id="ov" viewBox="0 0 ${VW} ${p.vh}"></svg></div>`
       : `<div class="stage-empty"><div style="text-align:center"><p>このマニュアルには動画が登録されていません（一覧表示用のダミーデータ）。</p><button class="btn" id="attachV">動画を登録する</button><input type="file" id="attachF" accept="video/*" hidden></div></div>`}
       </div>
@@ -633,7 +757,7 @@ async function tabAnnot(p) {
         <button class="btn sm" id="addStep">＋ この位置で手順を追加</button>
         <button class="btn sm" id="setFrame" title="現在の手順の写真を、この位置のフレームに変更">📷 手順写真にする</button>
       </div>
-      <div class="lower-tabs" id="lowerTabs"><button data-lw="sum">📝 動画の要約</button><button data-lw="tl">⏱ タイムライン（注釈の時間調整）</button></div>
+      <div class="lower-tabs" id="lowerTabs"><button data-lw="sum">📝 動画の要約</button><button data-lw="tl">⏱ タイムライン（注釈の時間調整）</button><span class="grow"></span><span class="lang-lbl">🌐 表示言語</span>${langBar('annLang', CUR_LANG, p)}</div>
       <div class="sum" id="sum"></div>
       <div class="tl" id="tl">
         <div class="tl-head"><span>タイムライン（上段：手順の区切り ／ 下段：注釈の表示時間）</span><span>クリックで移動・注釈はドラッグで時間調整</span></div>
@@ -683,7 +807,7 @@ async function tabAnnot(p) {
   function drawOv() {
     const t = vid.currentTime, vis = p.overlays.filter(o => t >= o.start && t < o.end);
     const k = VW / (stage.clientWidth || VW), hs = 7 * k;
-    let html = vis.map(o => `<g data-id="${o.id}">${ovSVG(o, p.images, true)}</g>`).join('');
+    let html = vis.map(o => `<g data-id="${o.id}">${ovSVG(ovDisp(o, CUR_LANG), p.images, true)}</g>`).join('');
     const o = selO();
     if (o && vis.includes(o)) {
       if (o.type === 'arrow') html += [['p1', o.x1, o.y1], ['p2', o.x2, o.y2]].map(([h, x, y]) => `<circle class="h" data-h="${h}" cx="${x}" cy="${y}" r="${hs}"/>`).join('');
@@ -855,45 +979,64 @@ async function tabAnnot(p) {
     tdrag = null;
   };
 
-  /* --- 動画の要約（議事録形式） --- */
+  /* --- 動画の要約（議事録形式・多言語） --- */
   const setLower = k => { E.lower = k; $$('[data-lw]').forEach(b => b.classList.toggle('on', b.dataset.lw === k)); $('#sum').hidden = k !== 'sum'; $('#tl').hidden = k !== 'tl'; };
   $$('[data-lw]').forEach(b => b.onclick = () => setLower(b.dataset.lw));
+  const setLang = l => {
+    setCurLang(l); $$('#annLang [data-lang]').forEach(b => b.classList.toggle('on', b.dataset.lang === l));
+    const bd = $('#langBadge'); bd.hidden = l === 'ja'; bd.textContent = `注釈の表示言語：${CLANGS[l]}`;
+    drawSum(); drawPanel();
+  };
+  $$('#annLang [data-lang]').forEach(b => b.onclick = () => setLang(b.dataset.lang));
   function drawSum() {
+    const lg = CUR_LANG, L = SUM_L[lg], both = lg !== 'ja' && SHOW_JA;
     const D = p.duration || 0, steps = [...p.steps].sort((a, b) => a.t - b.t);
     const lines = s => String(s || '').split('\n').map(x => x.trim()).filter(Boolean);
+    const sub = (tr, ja) => both && ja && tr !== ja ? `<span class="ja-sub" lang="ja">${esc(ja)}</span>` : '';
     const cnt = { danger: 0, warning: 0, caution: 0 }; steps.forEach(s => { if (cnt[s.lv] != null) cnt[s.lv]++; });
     const nSafe = cnt.danger + cnt.warning + cnt.caution;
-    const ppe = lines(String(p.ppe || '').replace(/[,、]/g, '\n'));
-    const lvB = lv => lv && lv !== 'none' ? `<span class="lvb ${lv}">${LV[lv]}</span>` : '';
-    const meta = [['設備', p.equipment], ['工程・場所', [p.process, p.line].filter(Boolean).join(' ／ ')], ['対象者', p.target], ['動画の長さ', D ? `${fmtS(D)}（${D.toFixed(0)} 秒）` : ''], ['手順数', `${steps.length} 手順`], ['必要な保護具', ppe.join('・')]].filter(([, v]) => v);
-    let overview = `この動画は、${p.equipment && !p.title.includes(p.equipment) ? `${esc(p.equipment)}の` : ''}「${esc(p.title)}」を <b>${steps.length} つの手順</b>で説明しています。`;
-    if (nSafe) overview += `うち <b>${nSafe} 手順</b>に安全上の注意があります（${[['danger', '危険'], ['warning', '警告'], ['caution', '注意']].filter(([k]) => cnt[k]).map(([k, l]) => `${l} ${cnt[k]}`).join('・')}）。`;
-    if (ppe.length) overview += `作業前に ${esc(ppe.join('・'))} を着用します。`;
-    const flow = steps.map(s => esc(s.title)).join(' → ');
-    const checks = []; steps.forEach((s, i) => lines(s.desc).forEach(l => { if (/確認/.test(l)) checks.push({ i, s, l }); }));
+    const ppe = lines(String(p.ppe || '').replace(/[,、]/g, '\n')).map(x => tTerm(x, lg));
+    const lvB = lv => lv && lv !== 'none' ? `<span class="lvb ${lv}">${LV_I18N[lg][lv]}</span>` : '';
+    const title = metaT(p, lg, 'title'), eq = metaT(p, lg, 'equipment');
+    const meta = [[L.eq, eq], [L.proc, [metaT(p, lg, 'process'), metaT(p, lg, 'line')].filter(Boolean).join(' ／ ')], [L.target, tTerm(p.target, lg)], [L.dur, D ? (lg === 'ja' || lg === 'zh' ? `${fmtS(D)}（${L.sec(D.toFixed(0))}）` : `${fmtS(D)} (${L.sec(D.toFixed(0))})`) : ''], [L.n, L.nSteps(steps.length)], [L.ppe, ppe.join(L.sep)]].filter(([, v]) => v);
+    const parts = ['danger', 'warning', 'caution'].filter(k => cnt[k]).map(k => `${LV_I18N[lg][k]} ${cnt[k]}`).join(L.sep);
+    const overview = L.overview({ title: esc(title), eq: eq && !title.includes(eq) ? esc(eq) : '', n: steps.length, nSafe, parts, ppe: esc(ppe.join(L.sep)) });
+    const flow = steps.map(s => esc(stT(s, lg, 'title'))).join(' → ');
+    // 確認ポイントは日本語の原文で判定し、同じ行の訳文を表示する
+    const checks = []; steps.forEach((s, i) => { const tl = lines(stT(s, lg, 'desc')), jl = lines(s.desc); jl.forEach((l, j) => { if (/確認/.test(l)) checks.push({ i, l: tl.length === jl.length ? tl[j] : l, ja: l }); }); });
     const items = steps.map((s, i) => {
-      const end = steps[i + 1]?.t ?? D;
-      const screen = p.overlays.filter(o => ['text', 'callout'].includes(o.type) && o.text && o.start >= s.t - 0.05 && o.start < end).sort((a, b) => a.start - b.start).map(o => `「${esc(o.text)}」`);
-      const body = lines(s.desc);
+      const end = steps[i + 1]?.t ?? D, st = stState(s, lg);
+      const screen = p.overlays.filter(o => ovHasText(o) && o.start >= s.t - 0.05 && o.start < end).sort((a, b) => a.start - b.start).map(o => L.q(esc(ovT(o, lg))));
+      const body = lines(stT(s, lg, 'desc')), jaBody = lines(s.desc), ct = stT(s, lg, 'ct');
       return `<li data-sum="${s.id}">
-        <button class="sum-t mono" data-seek="${s.t + 0.05}" title="この場面へ移動">${fmt(s.t).slice(0, 5)}<small>–${fmt(end).slice(0, 5)}</small></button>
-        <div class="sum-b"><div class="sum-ttl"><b>${i + 1}. ${esc(s.title)}</b>${lvB(s.lv)}</div>
-          ${body.length ? `<ul>${body.map(l => `<li>${esc(l)}</li>`).join('')}</ul>` : '<p class="muted">説明文はまだありません（「② 手順を編集」で追加できます）</p>'}
-          ${screen.length ? `<div class="sum-screen"><span>画面の表示</span>${screen.join(' ')}</div>` : ''}
-          ${s.ct ? `<div class="sum-ct ${s.lv}">⚠ ${esc(s.ct)}</div>` : ''}</div></li>`;
+        <button class="sum-t mono" data-seek="${s.t + 0.05}" title="${L.seek}">${fmt(s.t).slice(0, 5)}<small>–${fmt(end).slice(0, 5)}</small></button>
+        <div class="sum-b"><div class="sum-ttl"><b>${i + 1}. ${esc(stT(s, lg, 'title'))}</b>${lvB(s.lv)}${st === 'none' ? '<span class="trb none">未翻訳</span>' : st === 'stale' ? '<span class="trb stale">原文変更・要確認</span>' : ''}</div>${sub(stT(s, lg, 'title'), s.title)}
+          ${body.length ? `<ul>${body.map((l, j) => `<li>${esc(l)}${sub(l, body.length === jaBody.length ? jaBody[j] : '')}</li>`).join('')}</ul>${body.length !== jaBody.length ? sub('', s.desc) : ''}` : `<p class="muted">${L.noDesc}</p>`}
+          ${screen.length ? `<div class="sum-screen"><span>${L.screen}</span>${screen.join(' ')}</div>` : ''}
+          ${ct ? `<div class="sum-ct ${s.lv}">⚠ ${esc(ct)}${sub(ct, s.ct)}</div>` : ''}</div></li>`;
     }).join('');
     const safety = steps.map((s, i) => ({ s, i })).filter(({ s }) => s.lv !== 'none' || s.ct);
-    $('#sum').innerHTML = `
-      <div class="sum-head"><div><h3>動画の要約</h3><span class="muted">動画の説明内容を議事録の形にまとめています。時刻を押すとその場面へ移動します。</span></div><span class="tag">AI下書き</span></div>
+    const notesT = lines(metaT(p, lg, 'notes'));
+    let trNote = '';
+    if (lg !== 'ja') {
+      const miss = steps.filter(s => stState(s, lg) === 'none').length, stale = steps.filter(s => stState(s, lg) === 'stale').length;
+      trNote = `<div class="tr-note ${miss || stale ? '' : 'ok'}" lang="ja"><span class="grow">${miss || stale ? [miss && `未翻訳の手順が <b>${miss} 件</b>あります（日本語のまま表示）`, stale && `日本語が変更された手順が <b>${stale} 件</b>あります（要確認）`].filter(Boolean).join('　') : `✓ すべての手順が ${CLANGS[lg]} に翻訳されています`}</span>
+        <label class="row" style="gap:5px;font-size:12px"><input type="checkbox" id="showJa" ${SHOW_JA ? 'checked' : ''}> 日本語を併記</label>
+        ${miss ? '<button class="btn sm" id="autoTr">🌐 自動翻訳</button>' : ''}<a class="btn sm" href="#/edit/${p.id}/steps">✎ 訳文を確認・修正</a></div>`;
+    }
+    $('#sum').innerHTML = `${trNote}<div lang="${lg}">
+      <div class="sum-head"><div><h3>${L.h}</h3><span class="muted">${L.lead}</span></div><span class="tag">${L.ai}</span></div>
       <dl class="sum-meta">${meta.map(([k, v]) => `<div><dt>${k}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl>
-      <section class="sum-sec"><h4>概要</h4><p>${overview}</p>${steps.length > 1 ? `<p class="sum-flow"><span>流れ</span>${flow}</p>` : ''}</section>
-      <section class="sum-sec"><h4>手順ごとの内容</h4><ol class="sum-steps">${items || '<p class="muted">手順がまだありません。</p>'}</ol></section>
+      <section class="sum-sec"><h4>${L.ov}</h4><p>${overview}</p>${steps.length > 1 ? `<p class="sum-flow"><span>${L.flow}</span>${flow}</p>` : ''}</section>
+      <section class="sum-sec"><h4>${L.steps}</h4><ol class="sum-steps">${items || `<p class="muted">${L.noSteps}</p>`}</ol></section>
       <div class="sum-2">
-        <section class="sum-sec"><h4>安全上の注意</h4>${safety.length ? `<ul class="sum-list">${safety.map(({ s, i }) => `<li>${lvB(s.lv)}<span><b>手順${i + 1}</b> ${esc(s.ct || s.title)}</span></li>`).join('')}</ul>` : '<p class="muted">特になし</p>'}
-          ${p.notes ? `<ul class="sum-list plain">${lines(p.notes).map(l => `<li><span>${esc(l)}</span></li>`).join('')}</ul>` : ''}</section>
-        <section class="sum-sec"><h4>確認ポイント</h4>${checks.length ? `<ul class="sum-list checks">${checks.map(c => `<li><span class="box"></span><span><b>手順${c.i + 1}</b> ${esc(c.l.replace(/。$/, ''))}</span></li>`).join('')}</ul>` : '<p class="muted">説明文に「確認」を含む項目はありません</p>'}</section>
-      </div>`;
+        <section class="sum-sec"><h4>${L.safety}</h4>${safety.length ? `<ul class="sum-list">${safety.map(({ s, i }) => { const v = stT(s, lg, s.ct ? 'ct' : 'title'); return `<li>${lvB(s.lv)}<span><b>${L.step(i + 1)}</b> ${esc(v)}${sub(v, s.ct || s.title)}</span></li>`; }).join('')}</ul>` : `<p class="muted">${L.none}</p>`}
+          ${notesT.length ? `<ul class="sum-list plain">${notesT.map((l, j) => `<li><span>${esc(l)}${sub(l, lines(p.notes)[j])}</span></li>`).join('')}</ul>` : ''}</section>
+        <section class="sum-sec"><h4>${L.checks}</h4>${checks.length ? `<ul class="sum-list checks">${checks.map(c => `<li><span class="box"></span><span><b>${L.step(c.i + 1)}</b> ${esc(c.l.replace(/。$/, ''))}${sub(c.l, c.ja)}</span></li>`).join('')}</ul>` : `<p class="muted">${L.noCheck}</p>`}</section>
+      </div></div>`;
     $$('[data-seek]', $('#sum')).forEach(b => b.onclick = () => seek(+b.dataset.seek));
+    const sj = $('#showJa'); if (sj) sj.onchange = () => { setShowJa(sj.checked); drawSum(); };
+    const at = $('#autoTr'); if (at) at.onclick = () => toast('デモでは翻訳APIは未接続です。「訳文を確認・修正」から手入力できます');
     drawOv.cur = undefined; drawOv();
   }
   setLower(E.lower || 'sum');
@@ -909,6 +1052,7 @@ async function tabAnnot(p) {
         ${o.type === 'blur' || o.type === 'image' ? `<label class="f"><span>メモ（書き出しには出ません）</span><input class="in" id="p-label" value="${esc(o.label || '')}"></label>` : ''}
         ${hasColor ? `<label class="f"><span>色</span><div class="swatches">${COLORS.map(c => `<button class="sw ${o.color === c ? 'on' : ''}" data-pc="${c}" style="background:${c}"></button>`).join('')}</div></label>` : ''}
         ${hasSw ? `<label class="f"><span>線の太さ ${o.sw}</span><input type="range" id="p-sw" min="2" max="16" value="${o.sw}" style="width:100%"></label>` : ''}
+        ${ovHasText(o) || ['text', 'callout'].includes(o.type) ? `<div class="tr-fields">${TR_LANGS.map(l => `<label class="f ${l === CUR_LANG ? 'cur' : ''}"><span lang="ja">訳：${CLANGS[l]}${l === CUR_LANG ? '（表示中）' : ''}</span><input class="in" lang="${l}" data-otr="${l}" value="${esc(o.tr?.[l] || '')}" placeholder="未翻訳（日本語のまま表示）"></label>`).join('')}</div>` : ''}
         ${hasText && o.type !== 'number' ? `<label class="f"><span>文字サイズ ${o.fs}</span><input type="range" id="p-fs" min="14" max="60" value="${o.fs}" style="width:100%"></label>` : ''}
         <div class="two"><label class="f"><span>表示開始（秒）</span><input class="in mono" type="number" step="0.1" id="p-start" value="${o.start}"></label><label class="f"><span>表示終了（秒）</span><input class="in mono" type="number" step="0.1" id="p-end" value="${o.end}"></label></div>
         <div class="row" style="gap:6px;margin-bottom:8px"><button class="btn sm" id="p-sn">開始を現在位置に</button><button class="btn sm" id="p-en">終了を現在位置に</button><button class="btn sm" id="p-step">手順の終わりまで</button></div>
@@ -927,7 +1071,8 @@ async function tabAnnot(p) {
     if (!o) return;
     const bind = (id, fn, ev = 'input') => { const el = $('#' + id); if (el) el.addEventListener(ev, fn); };
     let typed = false;
-    bind('p-text', e => { if (!typed) { pushUndo(); typed = true; } o.text = e.target.value; touch(p); drawOv(); drawTL(); });
+    bind('p-text', e => { if (!typed) { pushUndo(); typed = true; } o.text = e.target.value; touch(p); drawOv(); drawTL(); drawSum(); });
+    $$('[data-otr]', sp).forEach(inp => inp.oninput = () => { o.tr ??= {}; o.tr[inp.dataset.otr] = inp.value.trim(); touch(p); drawOv(); drawSum(); });
     bind('p-label', e => { o.label = e.target.value; touch(p); drawTL(); });
     bind('p-sw', e => { o.sw = +e.target.value; e.target.previousElementSibling.textContent = '線の太さ ' + o.sw; touch(p); drawOv(); });
     bind('p-fs', e => { o.fs = +e.target.value; e.target.previousElementSibling.textContent = '文字サイズ ' + o.fs; touch(p); drawOv(); });
@@ -988,8 +1133,10 @@ function lintSteps(p) {
 function tabSteps(p) {
   const body = $('#tabBody');
   const draw = () => {
+    if (CUR_LANG !== 'ja') return drawTr();
     const lint = lintSteps(p);
     body.innerHTML = `
+      ${langHead()}
       <div class="card pad row" style="margin-bottom:12px;gap:14px">
         <div class="grow"><b>表記チェック</b> <span class="muted" style="font-size:12px">（生成設定のルールで判定）</span>
           ${lint.length ? `<ul class="hint" style="margin:6px 0 0;padding-left:18px">${lint.map(([, m]) => `<li>${esc(m)}</li>`).join('')}</ul>` : '<div class="hint" style="color:var(--green)">✓ 指摘はありません</div>'}</div>
@@ -1026,8 +1173,58 @@ function tabSteps(p) {
       });
       $('[data-goto]', card).onclick = () => { E.t = s.ft; };
     });
+    bindLang();
     $('#addBlank').onclick = () => { const last = p.steps[p.steps.length - 1]; const t = last ? Math.min(p.duration, last.t + 1) : 0; p.steps.push({ id: uid(), t, ft: t, title: '新しい手順', desc: '', lv: 'none', ct: '', ai: false }); touch(p); draw(); };
     $('.tabs a:nth-child(2) span').textContent = p.steps.length;
+  };
+  const langHead = () => `<div class="card pad lang-head"><div><b>編集する言語</b><div class="hint">日本語で作った手順を、English・中文・ไทย に翻訳して持てます。右の数字は翻訳済みの手順数です。</div></div>${langBar('stLang', CUR_LANG, p)}</div>`;
+  const bindLang = () => $$('#stLang [data-lang]').forEach(b => b.onclick = () => { setCurLang(b.dataset.lang); draw(); });
+  /* 翻訳モード：日本語の原文を見ながら訳文を入れる */
+  const drawTr = () => {
+    const lg = CUR_LANG, n = CLANGS[lg];
+    const st = p.steps.map(s => stState(s, lg)), c = k => st.filter(x => x === k).length;
+    const ref = (ja, multi) => `<div class="ja-ref" lang="ja">${ja ? esc(ja).replace(/\n/g, '<br>') : '<span class="muted">（日本語が空欄です）</span>'}</div>`;
+    const badge = k => ({ ok: '<span class="trb ok">✓ 翻訳済み</span>', none: '<span class="trb none">未翻訳</span>', stale: '<span class="trb stale">日本語が変更されました・要確認</span>' })[k];
+    const mt = p.trMeta?.[lg] || {};
+    const mf = (k, l, rows) => { const cur = mt[k] && mt['_' + k] === p[k] ? mt[k] : (mt[k] || ''); const old = mt[k] && mt['_' + k] !== p[k];
+      return `<div class="tr-row"><span class="tr-k">${l}${old ? ' <span class="trb stale">要確認</span>' : ''}</span>${ref(p[k])}${rows ? `<textarea class="in" lang="${lg}" rows="${rows}" data-m="${k}">${esc(cur)}</textarea>` : `<input class="in" lang="${lg}" data-m="${k}" value="${esc(cur)}">`}</div>`; };
+    const ovs = p.overlays.filter(ovHasText).sort((a, b) => a.start - b.start);
+    body.innerHTML = `${langHead()}
+      <div class="card pad row tr-sum" style="margin-bottom:12px;gap:14px">
+        <div class="grow"><b>${n} への翻訳</b>
+          <div class="hint">翻訳済み <b>${c('ok')}</b> ・ 要確認 <b style="color:var(--yellow)">${c('stale')}</b> ・ 未翻訳 <b style="color:var(--red)">${c('none')}</b>（全 ${p.steps.length} 手順）　注意レベル・写真・注釈の位置は日本語版と共通です。</div></div>
+        <button class="btn" id="autoTrAll">🌐 未翻訳を自動翻訳</button>
+      </div>
+      <details class="card pad tr-meta" ${Object.keys(mt).length ? '' : 'open'}><summary><b>タイトル・文書情報・全体の注意事項</b></summary>
+        ${mf('title', 'タイトル')}${mf('equipment', '設備名')}${mf('process', '工程')}${mf('line', 'ライン / 場所')}${mf('notes', '注意事項（全体）', 3)}</details>
+      <div class="steps">${p.steps.map((s, i) => { const t = s.tr?.[lg] || {}; return `
+        <div class="card step tr-step" data-s="${s.id}">
+          <div class="no">${i + 1}</div>
+          <div><div class="img" data-img="${s.id}"><span class="t">${fmt(s.ft)}</span></div>
+            <div class="row" style="margin-top:8px;gap:6px">${badge(st[i])}${s.lv !== 'none' ? `<span class="lvb ${s.lv}">${LV[s.lv]}</span>` : ''}</div>
+            ${st[i] === 'stale' ? '<button class="btn sm" data-ack style="margin-top:6px">✓ 訳文はこのままでよい</button>' : ''}</div>
+          <div>
+            <div class="tr-row"><span class="tr-k">手順タイトル</span>${ref(s.title)}<input class="in" lang="${lg}" data-t="title" value="${esc(t.title || '')}" placeholder="${n} で入力"></div>
+            <div class="tr-row"><span class="tr-k">作業内容</span>${ref(s.desc)}<textarea class="in" lang="${lg}" data-t="desc" rows="3" placeholder="日本語と同じ行数にすると、要約の「確認ポイント」も訳文で表示されます">${esc(t.desc || '')}</textarea></div>
+            ${s.ct || t.ct ? `<div class="tr-row"><span class="tr-k">注意文</span>${ref(s.ct)}<input class="in" lang="${lg}" data-t="ct" value="${esc(t.ct || '')}"></div>` : ''}
+          </div>
+        </div>`; }).join('') || '<div class="card empty">手順がありません</div>'}</div>
+      ${ovs.length ? `<div class="card pad" style="margin-top:12px"><h2>動画内の文字（吹き出し・ラベル）</h2><p class="hint" style="margin-top:-6px">動画の上に表示する文字です。訳文が長いときは、枠に収まるよう文字を自動で小さくします。</p>
+        <table class="t tr-ov"><tbody>${ovs.map(o => `<tr><td class="mono muted" style="width:90px;font-size:12px">${fmt(o.start).slice(0, 5)}</td><td style="width:40%" lang="ja">${esc(o.text)}</td><td><input class="in" lang="${lg}" data-ov="${o.id}" value="${esc(o.tr?.[lg] || '')}" placeholder="未翻訳（日本語のまま表示）"></td></tr>`).join('')}</tbody></table></div>` : ''}`;
+    bindLang();
+    $$('[data-img]').forEach(async el => {
+      const s = p.steps.find(x => x.id === el.dataset.img);
+      const src = p.videoKey ? await renderFrame(locP(p, lg), s.ft + 0.01, 640) : placeholderThumb(p, p.steps.indexOf(s) + 1);
+      el.insertAdjacentHTML('afterbegin', `<img src="${src}" alt="">`);
+    });
+    $$('.tr-step').forEach(card => {
+      const s = p.steps.find(x => x.id === card.dataset.s);
+      $$('[data-t]', card).forEach(inp => { inp.oninput = () => { s.tr ??= {}; const t = (s.tr[lg] ??= { title: '', desc: '', ct: '' }); t[inp.dataset.t] = inp.value; t.src = srcOf(s); touch(p); }; inp.onchange = draw; });
+      const ack = $('[data-ack]', card); if (ack) ack.onclick = () => { s.tr[lg].src = srcOf(s); touch(p); draw(); };
+    });
+    $$('[data-m]').forEach(inp => { inp.oninput = () => { p.trMeta ??= {}; const m = (p.trMeta[lg] ??= {}); m[inp.dataset.m] = inp.value; m['_' + inp.dataset.m] = p[inp.dataset.m]; touch(p); }; inp.onchange = draw; });
+    $$('[data-ov]').forEach(inp => inp.oninput = () => { const o = p.overlays.find(x => x.id === inp.dataset.ov); o.tr ??= {}; o.tr[lg] = inp.value.trim(); touch(p); });
+    $('#autoTrAll').onclick = () => toast('デモでは翻訳APIは未接続です。本番では未翻訳の手順・注釈を一括で翻訳します');
   };
   draw();
 }
@@ -1040,8 +1237,12 @@ const LBL = {
     info: '基本信息', ppe: '防护用品', spec: '仕样', steps: '步骤', notes: '注意事项', tools: '工具仪器', materials: '使用材料', forms: '相关表单', freq: '检查频率', rev: '修订履历', revNo: '版次', revDesc: '修订内容', revDate: '日期', stepCnt: '步骤数' },
   en: { title: 'Description', docNo: 'WI No.', process: 'Process', equipment: 'Model', line: 'Line', target: 'Operator', version: 'Rev.', date: 'Issued', page: 'Page', author: 'Dept.',
     info: 'Overview', ppe: 'PPE', spec: 'Specification', steps: 'Steps', notes: 'Notes', tools: 'Tools', materials: 'Materials', forms: 'Related forms', freq: 'Frequency', rev: 'Revision', revNo: 'Rev.', revDesc: 'Description', revDate: 'Date', stepCnt: 'Steps' },
+  th: { title: 'รายละเอียด', docNo: 'เลขที่เอกสาร', process: 'กระบวนการ', equipment: 'รุ่นเครื่อง', line: 'ไลน์', target: 'ผู้ปฏิบัติงาน', version: 'ฉบับ', date: 'วันที่ออก', page: 'หน้า', author: 'แผนก',
+    info: 'ข้อมูลทั่วไป', ppe: 'อุปกรณ์ป้องกัน', spec: 'ข้อกำหนด', steps: 'ขั้นตอนการทำงาน', notes: 'ข้อควรระวัง', tools: 'เครื่องมือ', materials: 'วัสดุที่ใช้', forms: 'แบบฟอร์มที่เกี่ยวข้อง', freq: 'ความถี่', rev: 'ประวัติการแก้ไข', revNo: 'ฉบับ', revDesc: 'รายละเอียดการแก้ไข', revDate: 'วันที่', stepCnt: 'จำนวนขั้นตอน' },
 };
-const LANGS = { ja: '日本語', 'ja-en': '日本語＋英語', 'ja-zh': '日本語＋中国語', 'en-ja': '英語＋日本語', 'zh-ja': '中国語＋日本語' };
+const DOC_HEAD = { en: 'Work Instruction', zh: '作业指导书', th: 'คู่มือการปฏิบัติงาน' };
+const VIDEO_W = { ja: '動画', en: 'Video', zh: '视频', th: 'วิดีโอ' };
+const LANGS = { ja: '日本語', en: 'English（英語）', zh: '中文（中国語）', th: 'ไทย（タイ語）', 'ja-en': '日本語＋英語', 'ja-zh': '日本語＋中国語', 'ja-th': '日本語＋タイ語', 'en-ja': '英語＋日本語', 'zh-ja': '中国語＋日本語', 'th-ja': 'タイ語＋日本語' };
 const lbl = (T, k) => { const [a, b] = T.lang.split('-'); return b ? `${LBL[a][k]}<small>${LBL[b][k]}</small>` : LBL[a][k]; };
 const HEADER_KEYS = ['docNo', 'process', 'equipment', 'title', 'line', 'target', 'version', 'date', 'page', 'author'];
 const SECTION_NAMES = { info: '基本情報（設備・工程・対象者）', ppe: '必要な保護具', spec: '仕様表', steps: '作業手順', notes: '注意事項のまとめ', resources: '工具・材料・関連帳票', rev: '改訂履歴', sign: '承認欄' };
@@ -1062,28 +1263,31 @@ function saveTemplates() { clearTimeout(tplSaveTimer); tplSaveTimer = setTimeout
 
 /* 手順写真のキャッシュ（プレビューを何度も組み直すため） */
 const stepImgCache = {};
-function stepImages(p, withAnn) {
-  const k = `${p.id}|${p.updatedAt}|${withAnn}`;
-  if (!stepImgCache[k]) stepImgCache[k] = (async () => { const out = []; for (const [i, s] of p.steps.entries()) out.push(p.videoKey ? await renderFrame(p, s.ft + 0.01, 640, withAnn) : placeholderThumb(p, i + 1)); return out; })();
+function stepImages(p, withAnn, lang = 'ja') {
+  const k = `${p.id}|${p.updatedAt}|${withAnn}|${lang}`; const lp = locP(p, lang);
+  if (!stepImgCache[k]) stepImgCache[k] = (async () => { const out = []; for (const [i, s] of p.steps.entries()) out.push(p.videoKey ? await renderFrame(lp, s.ft + 0.01, 640, withAnn) : placeholderThumb(p, i + 1)); return out; })();
   return stepImgCache[k];
 }
 
 function renderDoc(el, p, imgs, T) {
   el.className = `doc ${T.orient === 'landscape' ? 'land' : ''} fs-${T.fs}`;
   el.style.setProperty('--dc', T.color);
-  el.dataset.orient = T.orient;
+  el.dataset.orient = T.orient; el.lang = T.lang.split('-')[0];
   el.innerHTML = docHTML(p, imgs, T);
 }
 function docHTML(p, imgs, T) {
   const L = k => lbl(T, k);
+  // 内容も見出しと同じ言語にする（「日本語＋タイ語」なら日本語の下にタイ語を小さく）
+  const [la, lb] = T.lang.split('-'), src = p; p = locP(src, la); const P2 = lb ? locP(src, lb) : null;
+  const two = (a, b) => b && b !== a ? `${esc(a)}<small class="tr2" lang="${lb}">${esc(b)}</small>` : esc(a);
   const val = { docNo: p.docNo || '—', process: p.process || '—', equipment: p.equipment || '—', line: p.line || '—', target: p.target || '—', version: p.version, date: p.revisions.at(-1)?.[2] || p.createdAt, page: '1 / 1', title: p.title, author: p.author };
-  const lvName = { caution: '注意', warning: '警告', danger: '危険' };
-  const ct = s => s.lv !== 'none' && s.ct ? `<div class="ct ${s.lv}"><b>${lvName[s.lv]}</b>${esc(s.ct)}</div>` : '';
+  const lvName = LV_I18N[la];
+  const ct = (s, i) => s.lv !== 'none' && s.ct ? `<div class="ct ${s.lv}"><b>${lvName[s.lv]}</b>${two(s.ct, P2?.steps[i].ct)}</div>` : '';
   const on = T.sections.filter(x => x[1]).map(x => x[0]);
   const side = T.notesPos === 'side' && on.includes('notes');
   const top = T.header.includes('title')
-    ? `<div class="dt-top"><h1>${esc(T.heading)}</h1></div>`
-    : `<div class="dt-top left"><div class="dt-kicker">${esc(T.heading)}</div><h1>${esc(p.title)}</h1></div>`;
+    ? `<div class="dt-top"><h1>${esc(la === 'ja' ? T.heading : DOC_HEAD[la])}</h1></div>`
+    : `<div class="dt-top left"><div class="dt-kicker">${esc(la === 'ja' ? T.heading : DOC_HEAD[la])}</div><h1>${two(p.title, P2?.title)}</h1></div>`;
   const htable = T.header.length ? `<table class="dt-t dt-h"><tr>${T.header.map(k => `<th>${L(k)}</th>`).join('')}</tr><tr>${T.header.map(k => `<td>${esc(val[k])}</td>`).join('')}</tr></table>` : '';
   const steps = () => {
     const n = p.steps.length, C = Math.max(1, Math.min(+T.cols || 1, n || 1));
@@ -1093,16 +1297,17 @@ function docHTML(p, imgs, T) {
       const [r, c] = pos(i); let ar = '';
       if (T.arrows && i < n - 1) { const [r2, c2] = pos(i + 1); if (!(r2 > r && c2 !== c)) ar = `<span class="ar ar-${r2 > r ? 'd' : c2 > c ? 'r' : 'l'}"></span>`; }
       const img = `<img src="${imgs[i]}" alt="手順${i + 1}">`;
-      const txt = `<div class="ctx"><div class="chd"><b>${i + 1}</b><span>${esc(s.title)}</span></div><p>${esc(s.desc)}</p>${T.notesPos !== 'side' ? ct(s) : ''}${T.showTime ? `<div class="tm">動画 ${fmt(s.t)}〜</div>` : ''}</div>`;
+      const txt = `<div class="ctx"><div class="chd"><b>${i + 1}</b><span>${two(s.title, P2?.steps[i].title)}</span></div><p>${two(s.desc, P2?.steps[i].desc)}</p>${T.notesPos !== 'side' ? ct(s, i) : ''}${T.showTime ? `<div class="tm">${VIDEO_W[la]} ${fmt(s.t)}〜</div>` : ''}</div>`;
       return `<div class="cell img-${T.imgPos}" style="grid-row:${r + 1};grid-column:${c + 1};--iw:${iw}%;--iw2:${iw2}%">${T.imgPos === 'below' ? txt + img : img + txt}${ar}</div>`;
     }).join('');
     return `<h4 class="dt-sh">${L('steps')}</h4><div class="dt-grid ${T.imgPos === 'left' ? 'rows' : ''}" style="grid-template-columns:repeat(${C},minmax(0,1fr))">${cells}</div>`;
   };
   const notes = () => {
-    const gen = String(p.notes || '').split('\n').map(x => x.trim()).filter(Boolean);
+    const nl = v => String(v || '').split('\n').map(x => x.trim()).filter(Boolean);
+    const gen = nl(p.notes), gen2 = P2 ? nl(P2.notes) : [];
     const fromSteps = T.notesPos === 'inline' ? [] : p.steps.map((s, i) => [s, i]).filter(([s]) => s.lv !== 'none' && s.ct);
     if (!gen.length && !fromSteps.length) return '';
-    return `<div class="dt-notes"><h4>${L('notes')}</h4><ol>${gen.map(g => `<li>${esc(g)}</li>`).join('')}${fromSteps.map(([s, i]) => `<li><b class="lv-${s.lv}">［${lvName[s.lv]}］</b>手順${i + 1}：${esc(s.ct)}</li>`).join('')}</ol></div>`;
+    return `<div class="dt-notes"><h4>${L('notes')}</h4><ol>${gen.map((g, j) => `<li>${two(g, gen2.length === gen.length ? gen2[j] : '')}</li>`).join('')}${fromSteps.map(([s, i]) => `<li><b class="lv-${s.lv}">［${lvName[s.lv]}］</b>${SUM_L[la].step(i + 1)}：${two(s.ct, P2?.steps[i].ct)}</li>`).join('')}</ol></div>`;
   };
   const list = (k, arr) => `<table class="dt-t"><tr><th>${L(k)}</th></tr>${arr.length ? arr.map((x, i) => `<tr><td>${i + 1}. ${esc(x)}</td></tr>`).join('') : '<tr><td>—</td></tr>'}</table>`;
   const signLabels = String(T.sign || '').split(/[,、]/).map(x => x.trim()).filter(Boolean);
@@ -1138,6 +1343,9 @@ async function tabPreview(p) {
       <h2>出力フォーマット</h2>
       <select class="in" id="tplSel">${allTemplates().map(t => `<option value="${t.id}" ${t.id === p.template ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select>
       <a class="btn sm" style="margin-top:8px" href="#/templates/${esc(p.template)}">⚙ フォーマットを編集・新規作成</a>
+      <h2 style="margin-top:16px">🌐 出力する言語</h2>
+      <select class="in" id="docLang"></select>
+      <p class="hint" style="margin-top:6px" id="docLangHint"></p>
       <h2 style="margin-top:16px">出力</h2>
       <div style="display:flex;flex-direction:column;gap:8px">
         <button class="btn" id="xPrint">🖨 印刷する</button>
@@ -1149,21 +1357,32 @@ async function tabPreview(p) {
     </div>
     <div class="grow doc-fit" style="min-width:0"><div class="doc" id="doc"><div class="empty">手順書を組み立てています…</div></div></div>
   </div>`;
+  const curT = () => { const T0 = getT(p.template); return p.docLang && p.docLang !== 'tpl' ? { ...T0, lang: p.docLang } : T0; };
+  const fillLang = () => {
+    const T0 = getT(p.template);
+    $('#docLang').innerHTML = `<option value="tpl">フォーマットの設定に従う（${LANGS[T0.lang] || T0.lang}）</option>` + Object.entries(LANGS).map(([k, v]) => `<option value="${k}" ${k === p.docLang ? 'selected' : ''}>${v}</option>`).join('');
+    const ls = [...new Set(curT().lang.split('-'))].filter(l => l !== 'ja');
+    const miss = ls.map(l => [l, p.steps.length - trCount(p, l)]).filter(([, m]) => m);
+    $('#docLangHint').innerHTML = `手順の文・注意文・写真の注釈もこの言語で出力します。${miss.length ? `<br><span style="color:var(--red)">${miss.map(([l, m]) => `${CLANGS[l]}：未翻訳 ${m} 手順`).join('、')}（日本語のまま出ます）</span> <a href="#/edit/${p.id}/steps" data-trl="${miss[0][0]}">翻訳する</a>` : ''}`;
+    const a = $('[data-trl]'); if (a) a.onclick = () => setCurLang(a.dataset.trl);
+    const la = curT().lang.split('-')[0]; $('#xVideo').textContent = `🎬 注釈入り動画を書き出し${la !== 'ja' ? `（${CLANGS[la]}）` : ''}`;
+  };
   const build = async () => {
-    const T = getT(p.template); setPrintPage(T);
-    const imgs = await stepImages(p, $('#optAnn').checked);
+    const T = curT(); setPrintPage(T); fillLang();
+    const imgs = await stepImages(p, $('#optAnn').checked, T.lang.split('-')[0]);
     renderDoc($('#doc'), p, imgs, T); fitDoc($('#doc'));
   };
+  $('#docLang').onchange = e => { p.docLang = e.target.value; touch(p); build(); };
   $('#tplSel').onchange = e => { p.template = e.target.value; touch(p); $('.doc-side a.btn').href = `#/templates/${p.template}`; build(); };
   $('#optAnn').onchange = build;
   $('#xPrint').onclick = () => { const d = $('#doc'); d.style.zoom = ''; window.print(); fitDoc(d); };
   $('#xHtml').onclick = () => {
     const d = $('#doc').cloneNode(true); d.style.zoom = ''; d.removeAttribute('id');
-    const html = `<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(p.title)}</title><style>${docCSS()}${pageCSS(getT(p.template))}</style></head><body>${d.outerHTML}</body></html>`;
-    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([html], { type: 'text/html' })); a.download = `${p.docNo || 'manual'}_${p.title}.html`; a.click();
+    const html = `<!doctype html><html lang="${curT().lang.split('-')[0]}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(p.title)}</title><style>${docCSS()}${pageCSS(getT(p.template))}</style></head><body>${d.outerHTML}</body></html>`;
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([html], { type: 'text/html' })); a.download = `${p.docNo || 'manual'}_${p.title}_${curT().lang}.html`; a.click();
     toast('HTMLファイルを保存しました（画像込みの1ファイル）');
   };
-  $('#xVideo').onclick = () => exportVideo(p);
+  $('#xVideo').onclick = () => { const la = curT().lang.split('-')[0]; exportVideo(locP(p, la), la); };
   const ro = new ResizeObserver(() => fitDoc($('#doc'))); ro.observe($('.doc-fit'));
   cleanup = () => ro.disconnect();
   await build();
@@ -1275,7 +1494,7 @@ async function viewTemplates(id) {
   preview();
 }
 
-async function exportVideo(p) {
+async function exportVideo(p, lang = 'ja') {
   const url = await videoURL(p);
   const mime = ['video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm'].find(m => window.MediaRecorder && MediaRecorder.isTypeSupported(m));
   if (!mime) { toast('このブラウザは動画の書き出しに対応していません'); return; }
@@ -1303,7 +1522,7 @@ async function exportVideo(p) {
   rec.onstop = () => {
     bg.remove(); if (!chunks.length) return;
     const ext = mime.includes('mp4') ? 'mp4' : 'webm'; const blob = new Blob(chunks, { type: mime.split(';')[0] });
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `${p.docNo || 'manual'}_注釈入り.${ext}`; a.click();
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `${p.docNo || 'manual'}_注釈入り${lang !== 'ja' ? '_' + lang : ''}.${ext}`; a.click();
     toast(`注釈入り動画（${ext}・${(blob.size / 1048576).toFixed(1)} MB）を保存しました`);
   };
   $('#xcancel', bg).onclick = () => { stop = true; chunks.length = 0; v.pause(); rec.stop(); };
@@ -1345,7 +1564,7 @@ function sampleExtras() {
   };
 }
 function normalizeProject(p) {
-  p.template ??= 'std'; p.specs ??= []; p.tools ??= []; p.materials ??= []; p.forms ??= []; p.notes ??= '';
+  p.template ??= 'std'; p.trMeta ??= {}; p.docLang ??= 'tpl'; p.specs ??= []; p.tools ??= []; p.materials ??= []; p.forms ??= []; p.notes ??= '';
   p.revisions ??= [[p.version, '初版発行', p.createdAt]];
   return p;
 }
@@ -1363,7 +1582,11 @@ function normalizeProject(p) {
       for (const old of PROJECTS.filter(p => p.videoKey === 'sample')) { await DB.del(old.id); }
       PROJECTS = PROJECTS.filter(p => p.videoKey !== 'sample').concat(fresh); await DB.put(fresh); await DB.kvPut('seeded-v2', true);
     }
-    for (const p of PROJECTS) { if (p.videoKey === 'sample' && !p.specs) Object.assign(p, sampleExtras()); normalizeProject(p); }
+    for (const p of PROJECTS) {
+      if (p.videoKey === 'sample' && !p.specs) Object.assign(p, sampleExtras());
+      if (p.videoKey === 'sample' && !p.trMeta) { applySampleTr(p); DB.put(p); }
+      normalizeProject(p);
+    }
     CUSTOM_TEMPLATES = (await DB.kvGet('templates')) || [];
   } catch (e) { console.warn('IndexedDB を使えないため、保存なしで動かします', e); PROJECTS = seedProjects().map(normalizeProject); DB.put = DB.del = DB.putBlob = DB.kvPut = async () => { }; }
   window.addEventListener('hashchange', route);

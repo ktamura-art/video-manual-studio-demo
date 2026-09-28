@@ -11,7 +11,7 @@
 }
 *{box-sizing:border-box}
 html,body{margin:0;height:100%}
-body{background:var(--bg);color:var(--ink);font:14px/1.6 "Noto Sans JP","Hiragino Sans",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+body{background:var(--bg);color:var(--ink);font:14px/1.6 "Noto Sans JP","Noto Sans Thai","Hiragino Sans",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
 button,input,select,textarea{font:inherit;color:inherit}
 a{color:var(--blue)}
 .shell{display:flex;min-height:100vh}
@@ -367,3 +367,42 @@ kbd{font-family:var(--mono);font-size:11px;border:1px solid var(--line-2);border
   .doc{box-shadow:none;width:auto;padding:0;zoom:1!important}
   .doc.land{width:auto}
 }
+
+/* 多言語 */
+:lang(zh){font-family:"Noto Sans SC","Noto Sans JP","PingFang SC",sans-serif}
+:lang(th){font-family:"Noto Sans Thai","Noto Sans JP","Thonburi",sans-serif;line-height:1.75}
+:lang(ja){font-family:"Noto Sans JP","Hiragino Sans",sans-serif}
+.langbar{display:inline-flex;border:1px solid var(--line-2);border-radius:8px;overflow:hidden;background:var(--panel);flex:none}
+.langbar button{border:0;border-right:1px solid var(--line-2);background:transparent;padding:5px 12px;font-size:13px;cursor:pointer;color:var(--ink-2);display:inline-flex;align-items:baseline;gap:5px;line-height:1.4}
+.langbar button:last-child{border-right:0}
+.langbar button:hover{background:var(--panel-2)}
+.langbar button.on{background:var(--accent);color:#fff;font-weight:600}
+.langbar small{font-family:var(--mono);font-size:10px;color:var(--ink-3)}
+.langbar button.on small{color:rgba(255,255,255,.85)}
+.lower-tabs{align-items:center;flex-wrap:wrap}
+.lower-tabs .langbar{margin:5px 0}
+.lang-lbl{font-size:12px;color:var(--ink-3);margin-right:6px}
+.stage-wrap{position:relative}
+.lang-badge{position:absolute;top:16px;right:16px;z-index:6;background:rgba(28,95,184,.92);color:#fff;font-size:12px;padding:3px 10px;border-radius:99px;pointer-events:none}
+.lang-badge[hidden]{display:none}
+.tr-note{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:8px 12px;margin-bottom:14px;border-radius:8px;background:#fff6e5;border:1px solid #f1d08a;font-size:13px}
+.tr-note.ok{background:#eaf7ef;border-color:#b5e0c4}
+.ja-sub{display:block;font-size:12px;color:var(--ink-3);line-height:1.5;font-weight:400}
+.sum-ct .ja-sub{color:inherit;opacity:.7}
+.trb{font-size:11px;padding:0 7px;border-radius:4px;line-height:18px;font-weight:500;white-space:nowrap}
+.trb.ok{background:#e3f5ea;color:#17683a}
+.trb.none{background:#fde8e5;color:#9a2413}
+.trb.stale{background:#fff3c4;color:#6b4d00}
+.lang-head{display:flex;gap:14px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:12px}
+.tr-row{margin-bottom:10px}
+.tr-k{display:block;font-size:12px;color:var(--ink-2);margin-bottom:3px}
+.ja-ref{font-size:12px;color:var(--ink-2);background:var(--panel-2);border:1px dashed var(--line-2);border-radius:6px;padding:5px 9px;margin-bottom:4px;line-height:1.6}
+.ja-ref::before{content:"日本語";font-size:10px;color:var(--ink-3);border:1px solid var(--line-2);border-radius:3px;padding:0 4px;margin-right:6px;background:var(--panel)}
+.tr-meta{margin-bottom:12px}
+.tr-meta summary{cursor:pointer;margin-bottom:6px}
+.tr-meta[open] summary{margin-bottom:12px}
+.tr-ov td{vertical-align:middle}
+.tr-fields{border:1px dashed var(--line-2);border-radius:6px;padding:8px 8px 0;margin-bottom:10px}
+.tr-fields label.f.cur span{color:var(--blue);font-weight:600}
+.doc .tr2{display:block;font-size:.86em;color:#555;font-weight:400;margin-top:1px}
+@media (max-width:760px){.lower-tabs .grow{display:none}.lang-lbl{width:100%;margin:4px 0 0}.langbar button{padding:5px 9px}.tr-ov td:first-child{display:none}}
