@@ -411,17 +411,24 @@ function viewSettings() {
       <li>注釈を焼き込んだ手順画像の生成、手順書のHTML保存・印刷</li>
       <li>注釈入り動画の書き出し（ブラウザの録画機能を使用）</li>
     </ul>
-    <h2 style="margin-top:16px">本番で API に置き換える処理</h2>
+    <h2 style="margin-top:16px">解析サーバーで行う処理</h2>
     <ul class="hint" style="padding-left:18px;margin:0">
-      <li>音声の文字起こし</li>
-      <li>手順タイトル・本文・注意事項の文章生成</li>
-      <li>多言語への翻訳</li>
+      <li>音声の文字起こし（faster-whisper・このPC内で処理）</li>
+      <li>手順タイトル・本文・注意事項の文章生成（Claude）</li>
+      <li>英語・中国語・タイ語への翻訳（Claude）</li>
     </ul>
-    <p class="hint">このデモではサンプル動画に限り、あらかじめ用意した文章を当てはめます。それ以外の動画は、手順の枠と代表フレームだけを作ります。</p>
+    <h2 style="margin-top:16px">解析サーバー</h2>
+    <div class="api-status" id="apiStatus">確認しています…</div>
+    <label class="f"><span>サーバーのURL（空欄なら自動：同じサーバー、または http://localhost:8000）</span><input class="in mono" id="s-api" value="${esc(s.apiBase || '')}" placeholder="http://localhost:8000"></label>
+    <button class="btn sm" id="s-apitest">接続を確認</button>
+    <p class="hint">サーバーが動いていないときは、サンプル動画に限り用意した文章を当てはめるデモ動作になります。</p>
   </div></div>`;
+  const showApi = () => API.health(true).then(st => { $('#apiStatus').innerHTML = apiStatusHTML(st); });
+  showApi();
+  $('#s-apitest').onclick = async () => { SETTINGS.apiBase = $('#s-api').value.trim(); await DB.kvPut('settings', SETTINGS); showApi(); };
   $('#s-sens').value = s.sensitivity; $('#s-lang').value = s.lang; $('#s-style').value = s.style;
   $('#s-save').onclick = async () => {
-    Object.assign(SETTINGS, { sensitivity: $('#s-sens').value, minGap: +$('#s-gap').value || 1.5, lang: $('#s-lang').value, style: $('#s-style').value, ppe: $('#s-ppe').value, keywords: { danger: $('#s-kd').value, warning: $('#s-kw').value, caution: $('#s-kc').value } });
+    Object.assign(SETTINGS, { sensitivity: $('#s-sens').value, minGap: +$('#s-gap').value || 1.5, lang: $('#s-lang').value, style: $('#s-style').value, ppe: $('#s-ppe').value, apiBase: $('#s-api').value.trim(), keywords: { danger: $('#s-kd').value, warning: $('#s-kw').value, caution: $('#s-kc').value } });
     await DB.kvPut('settings', SETTINGS); toast('設定を保存しました');
   };
   $('#s-reset').onclick = async () => { SETTINGS = structuredClone(DEFAULT_SETTINGS); await DB.kvPut('settings', SETTINGS); viewSettings(); toast('既定に戻しました'); };
@@ -430,6 +437,76 @@ function viewSettings() {
     DB.db?.close(); DB.db = null;
     await new Promise(r => { const q = indexedDB.deleteDatabase('manual-studio'); q.onsuccess = q.onerror = q.onblocked = r; });
     location.hash = '#/dashboard'; location.reload();
+  };
+}
+
+/* ---------- 解析サーバー（Claude・文字起こし） ---------- */
+const API = {
+  base() { return (SETTINGS.apiBase || '').replace(/\/$/, '') || (location.port === '8000' ? '' : 'http://localhost:8000'); },
+  status: null,
+  async health(force) {
+    if (this.status && !force && Date.now() - this.status.at < 15000) return this.status;
+    try {
+      const r = await fetch(this.base() + '/api/health', { signal: AbortSignal.timeout(2500) });
+      this.status = { ...(await r.json()), at: Date.now() };
+    } catch { this.status = { ok: false, at: Date.now() }; }
+    return this.status;
+  },
+  ready() { return this.status?.ok && this.status.api_key; },
+  /* 進み具合（NDJSON）を1行ずつ onEvent に渡し、最後の結果を返す */
+  async analyze(fd, onEvent) {
+    const r = await fetch(this.base() + '/api/analyze', { method: 'POST', body: fd });
+    if (!r.ok || !r.body) throw new Error(`解析サーバーのエラー（${r.status}）`);
+    const rd = r.body.pipeThrough(new TextDecoderStream()).getReader(); let buf = '', result = null;
+    for (; ;) {
+      const { value, done } = await rd.read(); if (done) break;
+      buf += value; let i;
+      while ((i = buf.indexOf('\n')) >= 0) {
+        const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1); if (!line) continue;
+        const ev = JSON.parse(line);
+        if (ev.stage === 'error') throw new Error(ev.message);
+        if (ev.stage === 'done') result = ev.result; else onEvent(ev);
+      }
+    }
+    if (!result) throw new Error('解析サーバーから結果が返りませんでした');
+    return result;
+  },
+  async translate(body) {
+    const r = await fetch(this.base() + '/api/translate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const j = await r.json(); if (!r.ok) throw new Error(j.detail || `翻訳のエラー（${r.status}）`);
+    return j;
+  },
+};
+const apiStatusHTML = st => !st?.ok ? `<span class="api-dot off"></span>解析サーバーに未接続：デモ動作（文字起こし・文章生成・翻訳は行いません）。<code>server/start.sh</code> で起動できます`
+  : !st.api_key ? `<span class="api-dot warn"></span>解析サーバーは起動していますが、Claude API のキーが未設定です（<code>server/.env</code>）`
+    : `<span class="api-dot on"></span>解析サーバーに接続済み：${esc(st.model)}（考える深さ ${esc(st.effort)}）・文字起こし ${esc(st.whisper)}`;
+
+/* 未翻訳・要確認の手順と、動画内の文字・文書情報を Claude で訳す */
+async function autoTranslate(p, lang) {
+  await API.health(true);
+  if (!API.ready()) { toast(API.status?.ok ? 'Claude API のキーが未設定です（server/.env）' : '解析サーバーに接続できません。server/start.sh で起動してください'); return 0; }
+  const steps = p.steps.filter(s => stState(s, lang) !== 'ok').map(s => ({ id: s.id, title: s.title, desc: s.desc, ct: s.ct }));
+  const texts = {};
+  p.overlays.filter(o => ovHasText(o) && !o.tr?.[lang]).forEach(o => { texts['o:' + o.id] = o.text; });
+  ['title', 'equipment', 'process', 'line', 'notes'].forEach(k => { if (p[k] && metaT(p, lang, k) === p[k]) texts['m:' + k] = p[k]; });
+  if (!steps.length && !Object.keys(texts).length) { toast('翻訳が必要な項目はありません'); return 0; }
+  const r = await API.translate({ lang, steps, texts });
+  r.steps.forEach(t => { const s = p.steps.find(x => x.id === t.id); if (s) { s.tr ??= {}; s.tr[lang] = { title: t.title, desc: t.desc, ct: t.ct, src: srcOf(s) }; } });
+  Object.entries(r.texts).forEach(([k, v]) => {
+    if (k.startsWith('o:')) { const o = p.overlays.find(x => x.id === k.slice(2)); if (o) { o.tr ??= {}; o.tr[lang] = v; } }
+    else { const f = k.slice(2); p.trMeta ??= {}; const m = (p.trMeta[lang] ??= {}); m[f] = v; m['_' + f] = p[f]; }
+  });
+  p.aiCost = +((p.aiCost || 0) + r.cost.jpy).toFixed(1);
+  p.history.push({ at: today(), who: '製造技術課', what: `${CLANGS[lang]}に自動翻訳（${r.steps.length}手順・約${Math.round(r.cost.jpy)}円）` });
+  touch(p, true); toast(`${CLANGS[lang]}に翻訳しました（約 ${Math.round(r.cost.jpy)} 円）`);
+  return r.steps.length + Object.keys(r.texts).length;
+}
+/* ボタンを押している間「翻訳中…」にする */
+function bindAutoTr(btn, p, lang, after) {
+  if (!btn) return;
+  btn.onclick = async () => {
+    const label = btn.textContent; btn.disabled = true; btn.textContent = '翻訳中…';
+    try { if (await autoTranslate(p, lang)) after(); } catch (e) { toast(e.message); } finally { btn.disabled = false; btn.textContent = label; }
   };
 }
 
@@ -457,6 +534,8 @@ function viewUpload() {
       </div>
     </div>
     <div class="card pad" id="pipeCard"><h2>解析の進み具合</h2>
+      <div class="api-status" id="apiStatus">解析サーバーを確認しています…</div>
+      <label class="row" id="useAiRow" style="font-size:13px;gap:6px;margin:0 0 10px" hidden><input type="checkbox" id="useAi" checked> Claude で文字起こしから手順書と多言語訳を作る（10分の動画で約50〜100円）</label>
       <div id="vinfo" class="hint">動画を選ぶと解析を始めます。</div>
       <ul class="pipe" id="pipe"></ul>
       <canvas class="diffgraph" id="dg" hidden></canvas>
@@ -465,6 +544,7 @@ function viewUpload() {
     </div>
   </div>`;
   $('#u-sens').value = SETTINGS.sensitivity;
+  API.health(true).then(st => { $('#apiStatus').innerHTML = apiStatusHTML(st); $('#useAiRow').hidden = !API.ready(); });
   const drop = $('#drop'), vf = $('#vf');
   drop.onclick = () => vf.click();
   drop.ondragover = e => { e.preventDefault(); drop.classList.add('over'); };
@@ -483,15 +563,17 @@ function viewUpload() {
   async function startPipeline(file, isSample = false) {
     if (!file.type.startsWith('video/')) { toast('動画ファイルを選んでください'); return; }
     drop.style.pointerEvents = 'none'; drop.style.opacity = .5; $('#useSample').disabled = true;
+    await API.health(); const useAi = API.ready() && $('#useAi').checked; $('#useAi').disabled = true;
+    const aiTag = useAi ? 'Claude' : 'デモでは未実行';
     const STEPS = [
       ['load', 'ファイル読み込み・保存', '動画をこのブラウザ内に保存'],
       ['meta', 'メタデータ取得', '長さ・解像度'],
       ['scan', 'フレーム解析', '一定間隔でフレームを取り出し、前後の差分を計算'],
       ['cut', 'シーン分割', '差分が大きい位置を手順の区切りにする'],
       ['frame', '代表フレーム抽出', '各手順の写真に使う1枚を選ぶ'],
-      ['asr', '音声の文字起こし', '', 'API接続予定'],
-      ['gen', '手順文・注意事項の下書き', '', 'API接続予定'],
-      ['tr', '多言語に翻訳（English・中文・ไทย）', '', 'API接続予定'],
+      ['asr', '音声の文字起こし', '', useAi ? 'このPC内で処理' : aiTag],
+      ['gen', '手順文・注意事項の下書き', '', aiTag],
+      ['tr', '多言語に翻訳（English・中文・ไทย）', '', aiTag],
     ];
     $('#pipe').innerHTML = STEPS.map(([k, t, d, tag]) => `<li data-k="${k}"><span class="dot"></span><div class="grow"><b>${t}</b>${tag ? `<span class="tag">${tag}</span>` : ''}<small>${d}</small></div></li>`).join('');
     const st = (k, s, note) => { const li = $(`#pipe [data-k="${k}"]`); if (!li) return; li.className = s; if (note != null) $('small', li).innerHTML = note; };
@@ -538,24 +620,42 @@ function viewUpload() {
     st('frame', 'run');
     const scenes = cuts.map((t, i) => { const e = cuts[i + 1] ?? dur; return { t, e, ft: +(t + Math.min((e - t) * 0.6, 3)).toFixed(2) }; });
     const sc = document.createElement('canvas'); sc.width = 320; sc.height = Math.round(320 * H / W);
+    const bc = document.createElement('canvas'); bc.width = Math.min(1024, W); bc.height = Math.round(bc.width * H / W);
+    const frameBlobs = [];
     $('#scenes').innerHTML = '';
     for (const [i, s] of scenes.entries()) {
       if (aborted) return;
       await seekTo(v, s.ft); sc.getContext('2d').drawImage(v, 0, 0, sc.width, sc.height);
+      if (useAi) { bc.getContext('2d').drawImage(v, 0, 0, bc.width, bc.height); frameBlobs.push(await new Promise(r => bc.toBlob(r, 'image/jpeg', .82))); }
       $('#scenes').insertAdjacentHTML('beforeend', `<figure><img src="${sc.toDataURL('image/jpeg', .7)}" alt=""><figcaption class="mono">#${i + 1} ${fmt(s.t)}</figcaption></figure>`);
     }
     st('frame', 'done', `${scenes.length} 枚を抽出`);
+    // 文字起こし・文章生成・翻訳（解析サーバー）
+    let ai = null, aiErr = '';
+    if (useAi) {
+      const fd = new FormData();
+      fd.append('video', file, file.name);
+      fd.append('meta', JSON.stringify({ title: $('#u-title').value.trim(), equipment: $('#u-eq').value.trim(), process: $('#u-proc').value.trim(), line: $('#u-line').value.trim(), target: $('#u-target').value, ppe: SETTINGS.ppe, style: SETTINGS.style, duration: dur }));
+      fd.append('scenes', JSON.stringify(scenes));
+      frameBlobs.forEach((b, i) => fd.append('frames', b, `scene${i}.jpg`));
+      try { ai = await API.analyze(fd, ev => st(ev.stage, ev.status, esc(ev.note || ''))); }
+      catch (e) { aiErr = e.message; ['asr', 'gen', 'tr'].forEach(k => { const li = $(`#pipe [data-k="${k}"]`); if (li && li.className !== 'done') st(k, '', `<span style="color:var(--red)">${esc(aiErr)}</span>`); }); }
+      if (aborted) return;
+    }
     // 文字起こし・文章生成（デモ）
-    const useScript = isSample;
+    const useScript = isSample && !ai;
+    if (!useAi) {
     st('asr', 'run'); await sleep(500);
     st('asr', 'done', useScript ? 'サンプル動画のため、用意した台本を使用' : 'デモのため未実行（本番では音声からナレーションを文字起こし）');
     st('gen', 'run'); await sleep(600);
     st('gen', 'done', useScript ? '台本から手順タイトル・本文・注意事項を当てはめ' : 'デモのため未実行（手順の枠と代表フレームのみ作成）');
     st('tr', 'run'); await sleep(500);
     st('tr', 'done', useScript ? 'サンプル動画のため、用意した訳文（英語・中国語・タイ語）を使用' : 'デモのため未実行（「② 手順を編集」で言語を選ぶと手入力できます）');
+    }
     // プロジェクト作成
     let steps;
-    if (useScript) {
+    if (ai) steps = aiSteps(ai, scenes, dur);
+    else if (useScript) {
       steps = mkSteps(SAMPLE_STEPS.map((s, i) => ({ ...s, t: scenes.length === SAMPLE_STEPS.length ? scenes[i].t : s.t })));
     } else {
       steps = scenes.map((s, i) => ({ id: uid(), t: s.t, ft: s.ft, title: `手順 ${i + 1}`, desc: '', lv: 'none', ct: '', ai: false }));
@@ -563,15 +663,30 @@ function viewUpload() {
     const p = baseProject({
       title: $('#u-title').value.trim() || file.name.replace(/\.[^.]+$/, ''), equipment: $('#u-eq').value.trim(), process: $('#u-proc').value.trim(), line: $('#u-line').value.trim(),
       docNo: $('#u-no').value.trim(), target: $('#u-target').value, videoKey: key, videoName: file.name, duration: dur, width: W, height: H, vh: VW * H / W,
-      steps, overlays: useScript ? sampleOverlays() : [], images: useScript ? { ppe: PPE_SVG } : {}, ...(useScript ? sampleExtras() : {}),
-      history: [{ at: today(), who: '製造技術課', what: `動画から自動生成（${steps.length}手順）` }],
+      steps, overlays: isSample ? sampleOverlays() : [], images: isSample ? { ppe: PPE_SVG } : {}, ...(isSample ? sampleExtras() : {}),
+      history: [{ at: today(), who: '製造技術課', what: ai ? `動画からAIで自動生成（${steps.length}手順・${ai.cost.model}・約${Math.round(ai.cost.jpy)}円）` : `動画から自動生成（${steps.length}手順）` }],
     });
     if (useScript) applySampleTr(p);
+    if (ai) {
+      Object.assign(p, { transcript: ai.transcript, aiSummary: ai.summary, aiCost: ai.cost.jpy, notes: ai.notes || p.notes });
+      if (ai.ppe.length) p.ppe = ai.ppe.join(', ');
+      p.trMeta = {}; TR_LANGS.forEach(l => { if (ai.notes && ai.notes_tr[l]) p.trMeta[l] = { notes: ai.notes_tr[l], _notes: p.notes }; });
+      if (isSample) p.overlays.forEach(o => { if (SAMPLE_OV_TR[o.text]) o.tr = { ...SAMPLE_OV_TR[o.text] }; });
+    }
     await DB.put(p); PROJECTS.push(p);
-    $('#pipeDone').innerHTML = `<div class="row"><b class="grow">下書きができました（${steps.length} 手順${useScript ? ` ・ 注釈 ${p.overlays.length} 件` : ''}）</b><a class="btn primary" href="#/edit/${p.id}/annot">注釈を編集する →</a></div>`;
+    $('#pipeDone').innerHTML = `${aiErr ? `<p class="hint" style="color:var(--red)">AIでの作成に失敗したため、${isSample ? '用意した台本' : '手順の枠と写真だけ'}で下書きを作りました。</p>` : ''}<div class="row"><b class="grow">下書きができました（${steps.length} 手順${p.overlays.length ? ` ・ 注釈 ${p.overlays.length} 件` : ''}${ai ? ` ・ Claude の費用 約 ${Math.round(ai.cost.jpy)} 円（${ai.cost.input_tokens.toLocaleString()} / ${ai.cost.output_tokens.toLocaleString()} トークン・${ai.seconds} 秒）` : ''}）</b><a class="btn primary" href="#/edit/${p.id}/annot">内容を確認する →</a></div>`;
   }
 }
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+/* Claude の結果を手順データにする（写真はシーンの代表フレームを使う） */
+function aiSteps(ai, scenes, dur) {
+  return ai.steps.map(x => {
+    const sc = scenes[x.scene], t = +clamp(x.start, 0, Math.max(0, dur - 0.1)).toFixed(2);
+    const s = { id: uid(), t, ft: sc ? sc.ft : t, title: x.title, desc: x.desc, lv: LV[x.lv] ? x.lv : 'none', ct: x.lv === 'none' ? '' : x.ct, review: x.review || '', ai: true, tr: {} };
+    TR_LANGS.forEach(l => { const r = x.tr[l]; if (r) s.tr[l] = { title: r.title, desc: r.desc, ct: s.ct ? r.ct : '', src: srcOf(s) }; });
+    return s;
+  }).sort((a, b) => a.t - b.t);
+}
 function seekTo(v, t) {
   return new Promise(res => {
     let done = false; const fin = () => { if (done) return; done = true; v.removeEventListener('seeked', fin); res(); };
@@ -1022,21 +1137,23 @@ async function tabAnnot(p) {
       const miss = steps.filter(s => stState(s, lg) === 'none').length, stale = steps.filter(s => stState(s, lg) === 'stale').length;
       trNote = `<div class="tr-note ${miss || stale ? '' : 'ok'}" lang="ja"><span class="grow">${miss || stale ? [miss && `未翻訳の手順が <b>${miss} 件</b>あります（日本語のまま表示）`, stale && `日本語が変更された手順が <b>${stale} 件</b>あります（要確認）`].filter(Boolean).join('　') : `✓ すべての手順が ${CLANGS[lg]} に翻訳されています`}</span>
         <label class="row" style="gap:5px;font-size:12px"><input type="checkbox" id="showJa" ${SHOW_JA ? 'checked' : ''}> 日本語を併記</label>
-        ${miss ? '<button class="btn sm" id="autoTr">🌐 自動翻訳</button>' : ''}<a class="btn sm" href="#/edit/${p.id}/steps">✎ 訳文を確認・修正</a></div>`;
+        ${miss || stale ? '<button class="btn sm" id="autoTr">🌐 Claude で翻訳</button>' : ''}<a class="btn sm" href="#/edit/${p.id}/steps">✎ 訳文を確認・修正</a></div>`;
     }
     $('#sum').innerHTML = `${trNote}<div lang="${lg}">
       <div class="sum-head"><div><h3>${L.h}</h3><span class="muted">${L.lead}</span></div><span class="tag">${L.ai}</span></div>
       <dl class="sum-meta">${meta.map(([k, v]) => `<div><dt>${k}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl>
-      <section class="sum-sec"><h4>${L.ov}</h4><p>${overview}</p>${steps.length > 1 ? `<p class="sum-flow"><span>${L.flow}</span>${flow}</p>` : ''}</section>
+      <section class="sum-sec"><h4>${L.ov}</h4>${p.aiSummary && lg === 'ja' ? `<p>${esc(p.aiSummary)}</p>` : ''}<p>${overview}</p>${steps.length > 1 ? `<p class="sum-flow"><span>${L.flow}</span>${flow}</p>` : ''}</section>
       <section class="sum-sec"><h4>${L.steps}</h4><ol class="sum-steps">${items || `<p class="muted">${L.noSteps}</p>`}</ol></section>
       <div class="sum-2">
         <section class="sum-sec"><h4>${L.safety}</h4>${safety.length ? `<ul class="sum-list">${safety.map(({ s, i }) => { const v = stT(s, lg, s.ct ? 'ct' : 'title'); return `<li>${lvB(s.lv)}<span><b>${L.step(i + 1)}</b> ${esc(v)}${sub(v, s.ct || s.title)}</span></li>`; }).join('')}</ul>` : `<p class="muted">${L.none}</p>`}
           ${notesT.length ? `<ul class="sum-list plain">${notesT.map((l, j) => `<li><span>${esc(l)}${sub(l, lines(p.notes)[j])}</span></li>`).join('')}</ul>` : ''}</section>
         <section class="sum-sec"><h4>${L.checks}</h4>${checks.length ? `<ul class="sum-list checks">${checks.map(c => `<li><span class="box"></span><span><b>${L.step(c.i + 1)}</b> ${esc(c.l.replace(/。$/, ''))}${sub(c.l, c.ja)}</span></li>`).join('')}</ul>` : `<p class="muted">${L.noCheck}</p>`}</section>
-      </div></div>`;
+      </div>
+      ${p.transcript?.length ? `<details class="sum-sec sum-tx" lang="ja"><summary><h4 style="display:inline">文字起こし（原文・${p.transcript.length} 区間）</h4></summary><ul>${p.transcript.map(x => `<li><button class="sum-t mono" data-seek="${x.start + 0.05}">${fmt(x.start).slice(0, 5)}</button><span>${esc(x.text)}</span></li>`).join('')}</ul></details>` : ''}</div>`;
     $$('[data-seek]', $('#sum')).forEach(b => b.onclick = () => seek(+b.dataset.seek));
     const sj = $('#showJa'); if (sj) sj.onchange = () => { setShowJa(sj.checked); drawSum(); };
-    const at = $('#autoTr'); if (at) at.onclick = () => toast('デモでは翻訳APIは未接続です。「訳文を確認・修正」から手入力できます');
+    bindAutoTr($('#autoTr'), p, lg, () => { drawSum(); drawOv(); drawPanel(); });
+    $$('#annLang [data-lang] small').forEach(el => { el.textContent = `${trCount(p, el.parentElement.dataset.lang)}/${p.steps.length}`; });
     drawOv.cur = undefined; drawOv();
   }
   setLower(E.lower || 'sum');
@@ -1124,6 +1241,7 @@ function lintSteps(p) {
     if (!s.desc.trim()) out.push([s.id, `${n}：作業内容が空欄です`]);
     for (const lv of ['danger', 'warning']) { const hit = kw(lv).find(k => (s.title + s.desc).includes(k)); if (hit && (s.lv === 'none' || s.lv === 'caution')) { out.push([s.id, `${n}：「${hit}」を含みますが、注意レベルが「${LV[s.lv]}」です（推奨：${LV[lv]}）`]); break; } }
     if (s.lv !== 'none' && !s.ct.trim()) out.push([s.id, `${n}：注意レベルを設定していますが、注意文が空欄です`]);
+    if (s.review) out.push([s.id, `${n}：AIからの確認依頼「${s.review}」`]);
     const da = /(ます|ません)。?\s*$/m.test(s.desc), de = /(する|しない|こと)。?\s*$/m.test(s.desc);
     if (SETTINGS.style === 'desu' && de) out.push([s.id, `${n}：である調の文末があります（設定：です・ます調）`]);
     if (SETTINGS.style === 'dearu' && da) out.push([s.id, `${n}：です・ます調の文末があります（設定：である調）`]);
@@ -1155,6 +1273,7 @@ function tabSteps(p) {
               <label class="f grow" style="margin:0"><span>注意文</span><input class="in" data-k="ct" value="${esc(s.ct)}" placeholder="${s.lv === 'none' ? '（注意レベル「なし」のときは表示しません）' : '注意する内容'}"></label>
             </div>
             <div class="row" style="margin-top:8px;justify-content:space-between"><span class="ai-note">${s.ai ? '◆ 自動生成された下書き' : '手入力'}${lint.some(l => l[0] === s.id) ? ' ・ <span style="color:var(--accent)">表記チェックの指摘あり</span>' : ''}</span><span class="muted mono" style="font-size:11px">区切り ${fmt(s.t)} ／ 写真 ${fmt(s.ft)}</span></div>
+            ${s.review ? `<div class="ai-review">⚠ AIからの確認依頼：${esc(s.review)}<button class="btn sm" data-rv>確認した</button></div>` : ''}
           </div>
         </div>`).join('') || '<div class="card empty">手順がありません</div>'}</div>`;
     $$('[data-img]').forEach(async el => {
@@ -1166,6 +1285,7 @@ function tabSteps(p) {
       const s = p.steps.find(x => x.id === card.dataset.s);
       $$('[data-k]', card).forEach(inp => { inp.oninput = () => { s[inp.dataset.k] = inp.value; s.ai = false; touch(p); }; inp.onchange = draw; });
       $$('[data-lv]', card).forEach(b => b.onclick = () => { s.lv = b.dataset.lv; touch(p); draw(); });
+      const rv = $('[data-rv]', card); if (rv) rv.onclick = () => { s.review = ''; touch(p); draw(); };
       $('[data-rm]', card).onclick = () => { if (!confirm(`手順「${s.title}」を削除しますか？（注釈は残ります）`)) return; p.steps = p.steps.filter(x => x !== s); touch(p); draw(); };
       $$('[data-mv]', card).forEach(b => b.onclick = () => {
         const i = p.steps.indexOf(s), j = i + +b.dataset.mv; [p.steps[i], p.steps[j]] = [p.steps[j], p.steps[i]];
@@ -1193,7 +1313,7 @@ function tabSteps(p) {
       <div class="card pad row tr-sum" style="margin-bottom:12px;gap:14px">
         <div class="grow"><b>${n} への翻訳</b>
           <div class="hint">翻訳済み <b>${c('ok')}</b> ・ 要確認 <b style="color:var(--yellow)">${c('stale')}</b> ・ 未翻訳 <b style="color:var(--red)">${c('none')}</b>（全 ${p.steps.length} 手順）　注意レベル・写真・注釈の位置は日本語版と共通です。</div></div>
-        <button class="btn" id="autoTrAll">🌐 未翻訳を自動翻訳</button>
+        <button class="btn" id="autoTrAll">🌐 未翻訳・要確認を Claude で翻訳</button>
       </div>
       <details class="card pad tr-meta" ${Object.keys(mt).length ? '' : 'open'}><summary><b>タイトル・文書情報・全体の注意事項</b></summary>
         ${mf('title', 'タイトル')}${mf('equipment', '設備名')}${mf('process', '工程')}${mf('line', 'ライン / 場所')}${mf('notes', '注意事項（全体）', 3)}</details>
@@ -1224,7 +1344,7 @@ function tabSteps(p) {
     });
     $$('[data-m]').forEach(inp => { inp.oninput = () => { p.trMeta ??= {}; const m = (p.trMeta[lg] ??= {}); m[inp.dataset.m] = inp.value; m['_' + inp.dataset.m] = p[inp.dataset.m]; touch(p); }; inp.onchange = draw; });
     $$('[data-ov]').forEach(inp => inp.oninput = () => { const o = p.overlays.find(x => x.id === inp.dataset.ov); o.tr ??= {}; o.tr[lg] = inp.value.trim(); touch(p); });
-    $('#autoTrAll').onclick = () => toast('デモでは翻訳APIは未接続です。本番では未翻訳の手順・注釈を一括で翻訳します');
+    bindAutoTr($('#autoTrAll'), p, lg, draw);
   };
   draw();
 }

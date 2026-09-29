@@ -1,0 +1,6 @@
+anthropic>=1.9
+fastapi
+uvicorn[standard]
+python-multipart
+faster-whisper
+python-dotenv

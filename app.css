@@ -406,3 +406,15 @@ kbd{font-family:var(--mono);font-size:11px;border:1px solid var(--line-2);border
 .tr-fields label.f.cur span{color:var(--blue);font-weight:600}
 .doc .tr2{display:block;font-size:.86em;color:#555;font-weight:400;margin-top:1px}
 @media (max-width:760px){.lower-tabs .grow{display:none}.lang-lbl{width:100%;margin:4px 0 0}.langbar button{padding:5px 9px}.tr-ov td:first-child{display:none}}
+
+/* 解析サーバー */
+.api-status{font-size:12px;color:var(--ink-2);background:var(--panel-2);border:1px solid var(--line);border-radius:6px;padding:6px 10px;margin-bottom:10px;line-height:1.6}
+.api-status code{font-family:var(--mono);font-size:11px;background:var(--panel);border:1px solid var(--line);border-radius:3px;padding:0 4px}
+.api-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:1px;background:var(--ink-3)}
+.api-dot.on{background:var(--green)}.api-dot.warn{background:var(--yellow)}
+.ai-review{margin-top:8px;font-size:12px;background:#fff6e5;border:1px solid #f1d08a;border-radius:6px;padding:6px 9px;display:flex;gap:8px;align-items:center;justify-content:space-between;color:#6b4d00}
+.sum-tx summary{cursor:pointer}
+.sum-tx ul{list-style:none;margin:8px 0 0;padding:0;max-height:260px;overflow:auto;border:1px solid var(--line);border-radius:8px}
+.sum-tx li{display:flex;gap:10px;align-items:flex-start;padding:6px 10px;border-bottom:1px dashed var(--line);font-size:13px}
+.sum-tx li:last-child{border-bottom:0}
+.sum-tx .sum-t{padding:1px 6px;flex:none}
